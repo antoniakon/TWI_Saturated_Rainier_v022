@@ -1,7 +1,6 @@
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
-import scala.collection.breakOut
 import annotation.tailrec
 
 object Anova2way{
@@ -10,12 +9,11 @@ object Anova2way{
     val n1 = 3 // levels of var1
     val n2 = 4 // levels of var2
     val rng = ScalaRNG(3)
-    val (dataWithoutInter, dataWithInter) = dataGeneration(rng, n1, n2)
-    mainEffects(dataWithoutInter, rng, n1, n2)
+    val (dataMap, dataWithInter) = dataGeneration(rng, n1, n2)
+    mainEffects(dataMap, rng, n1, n2)
   }
 
   /**
-    *
     * Generate data with and without interactions
     */
   def dataGeneration(rng: ScalaRNG, n1: Int, n2: Int): (Map[(Int, Int), Vector[Double]], Vector[Vector[Double]]) = {
@@ -31,7 +29,7 @@ object Anova2way{
     val effects2 = Vector.fill(n2)(sigE2 * rng.standardNormal) // Effects2
     val inters = Vector.fill(n)(sigInter * rng.standardNormal) // Interaction effects
 
-    val pairedgroups = for (i <- (1 to n1); j <- (1 to n2)) yield (i, j) // Create a vector with all the combinations of levels: Vector((1,1), (1,2), ..., (2,1), (2,2),...)
+    val pairedgroups = for (i <- (0 until n1); j <- (0 until n2)) yield (i, j) // Create a vector with all the combinations of levels: Vector((1,1), (1,2), ..., (2,1), (2,2),...)
     val pairedEff = for (i <- effects1; j <- effects2) yield (i, j) // Pairing the effects for the groups as defined from pairedgroups
     val data = pairedEff map { e => Vector.fill(N)(mu + e._1 + e._2 + sigD * rng.standardNormal) } // Create the "random" N observations per group by using the effects for each variable + mu + error. Result: Vector(Vector(...N obs for group (1,1)..., Vector(...N obs for group (1,2)..., ...)
 
@@ -39,21 +37,20 @@ object Anova2way{
     val dataWithInter = inters.flatMap(i => data.map(v => v.map(elem => i + elem))) //Add the interactions to the data
     val dataWithInterMap = (pairedgroups zip dataWithInter).toMap
 
-    println(effects1)
-    println(effects2)
-//    println(pairedgroups)
-//    println(pairedEff)
-//    println(data)
-//    println(inters)
-//    println(dataWithInter)
-//    println(data.length)
-//    println(dataMap(1,1))
-//    println(dataMap)
-//    println(dataWithInterMap)
+    println(s"effects1: ", effects1)
+    println(s"effects2: ", effects2)
+    //    println(pairedgroups)
+    //    println(pairedEff)
+    //    println(data)
+    //    println(inters)
+    //    println(dataWithInter)
+    //    println(data.length)
+    //    println(dataMap(1,1))
+    //    println(dataMap)
+    //    println(dataWithInterMap)
 
     (dataMap, dataWithInter)
   }
-
 
   // build and fit model
   case class MyStructure(mu: Real, eff1: List[Real], eff2: List[Real], sigE1: Real, sigE2: Real, sigD: Real)
@@ -67,7 +64,9 @@ object Anova2way{
     sigD <- LogNormal(1, 4).param
   } yield (MyStructure(mu, List(eff1), List(eff2), sigE1, sigE2, sigD))
 
-
+  /**
+    * Add the main effects of alpha
+    */
   def addAplha(current: RandomVariable[MyStructure], i: Int): RandomVariable[MyStructure]= {
     for {
       cur <- current
@@ -75,6 +74,9 @@ object Anova2way{
     } yield (MyStructure(cur.mu, gm_1::cur.eff1, cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
   }
 
+  /**
+    * Add the main effects of beta
+    */
   def addBeta(current: RandomVariable[MyStructure], j: Int): RandomVariable[MyStructure]= {
     for {
       cur <- current
@@ -82,7 +84,9 @@ object Anova2way{
     } yield (MyStructure(cur.mu, cur.eff1, gm_2::cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
   }
 
-
+  /**
+    * Fit to the data per group
+    */
   def addGroup(current: RandomVariable[MyStructure], i: Int, j:Int, dataMap: Map[(Int, Int), Vector[Double] ] ): RandomVariable[MyStructure] = {
     for {
       cur <- current
@@ -91,10 +95,13 @@ object Anova2way{
 
   }
 
+  /**
+    * Add all the main effects for each group. Version: Recursion
+    */
   @tailrec def addAllEffRecursive(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double]], i: Int, j: Int ) : RandomVariable[MyStructure] = {
 
-    val n1 = alphabeta.value.eff1.length
-    val n2 = alphabeta.value.eff2.length
+    val n1 = alphabeta.value.eff1.length-1
+    val n2 = alphabeta.value.eff2.length-1
 
     val temp = addGroup(alphabeta, i, j, dataMap)
 
@@ -107,14 +114,12 @@ object Anova2way{
     }
   }
 
-  def fullModel(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double]]) : RandomVariable[MyStructure] = {
-    //    meLoop(alphabeta, dataMap)
-    addAllEffRecursive(alphabeta, dataMap, 0, 0)
-  }
-
+  /**
+    * Add all the main effects for each group. Version: Loop
+    */
   def addAllEffLoop(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double] ]) : RandomVariable[MyStructure] = {
-    val n1 = alphabeta.value.eff1.length
-    val n2 = alphabeta.value.eff2.length
+    val n1 = alphabeta.value.eff1.length-1
+    val n2 = alphabeta.value.eff2.length-1
 
     var tempAlphaBeta: RandomVariable[MyStructure] = alphabeta
 
@@ -123,54 +128,57 @@ object Anova2way{
         tempAlphaBeta = addGroup(tempAlphaBeta, i, j, dataMap)
       }
     }
-
     tempAlphaBeta
   }
 
   /**
-    *
+    * Add all the main effects for each group.
+    * We would like something like: val result = (0 until n1)(0 until n2).foldLeft(alphabeta)(addGroup(_,(_,_)))
+    * But we can't use foldLeft with double loop so we use an extra function either with loop or recursively
+    */
+  def fullModel(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double]]) : RandomVariable[MyStructure] = {
+    //addAllEffLoop(alphabeta, dataMap)
+    addAllEffRecursive(alphabeta, dataMap, 0, 0)
+  }
+
+  /**
     * Use Rainier for modelling the main effects only, without interactions
     */
   def mainEffects(dataMap: Map[(Int, Int), Vector[Double] ], rngS: ScalaRNG, n1: Int, n2:Int): Unit= {
     implicit val rng= rngS
     val n= dataMap.size //No of groups
 
-
     val alpha=(0 until n1).foldLeft(prior)(addAplha(_,_))
-    println(alpha.value.mu)
 
     val alphabeta= (0 until n2).foldLeft(alpha)(addBeta(_,_))
 
-    //      val result= (0 until n).foldLeft(alphabeta)(addGroup(_)
     val fullModelRes = fullModel(alphabeta, dataMap)
 
-    sealed abstract class Thing
-    case class obj(ob: Real ) extends Thing
-    case class vec(ve: List[Real]) extends Thing
+    //sealed abstract class Thing
+    //case class obj(ob: Real ) extends Thing
+    //case class vec(ve: List[Real]) extends Thing
 
-          val model = for {
-            mod <- fullModelRes
-          } yield
-            Map("mu" -> mod.mu,
-              "eff1" -> mod.eff1(1),
-              "eff2" -> mod.eff2(1),
-              "sigE1" -> mod.sigE2,
-              "sigE2" -> mod.sigE2,
-              "sigD" -> mod.sigD)
+    val model = for {
+      mod <- fullModelRes
+    } yield Map("mu" -> mod.mu,
+      "eff1" -> mod.eff1(0),
+      "eff2" -> mod.eff2(0),
+      "sigE1" -> mod.sigE1,
+      "sigE2" -> mod.sigE2,
+      "sigD" -> mod.sigD)
 
-          // sampling
-          println("Model built. Sampling now (will take a long time)...")
-          val thin = 200
-          val out = model.sample(HMC(5), 100000, 100000 * thin, thin)
+    // sampling
+    println("Model built. Sampling now (will take a long time)...")
+    val thin = 200
+    val out = model.sample(HMC(5), 100000, 100000 * thin, thin)
 
-    println(out)
-          //Average parameters
-          //val grouped= out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-          //val avg= grouped.map(l=> (l._1,l._2.sum/out.length)) //For the SP we don't need an average
+    //Average parameters
+    val grouped= out.flatten.groupBy(_._1).mapValues(_.map(_._2))
+    val avg= grouped.map(l=> (l._1,l._2.sum/out.length))
 
-          //println(grouped)
-          //println(avg)
-          println("Sampling finished.")
+    //println(grouped)
+    println(avg)
+    println("Sampling finished.")
 
   }
 }
