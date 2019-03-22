@@ -37,16 +37,19 @@ object Anova2way{
 
     val dataMap = (pairedgroups zip data).toMap
     val dataWithInter = inters.flatMap(i => data.map(v => v.map(elem => i + elem))) //Add the interactions to the data
+    val dataWithInterMap = (pairedgroups zip dataWithInter).toMap
+
     println(effects1)
     println(effects2)
-    println(pairedgroups)
-    println(pairedEff)
-    println(data)
-    println(inters)
-    println(dataWithInter)
-    println(data.length)
-    println(dataMap(1,1))
-    println(dataMap)
+//    println(pairedgroups)
+//    println(pairedEff)
+//    println(data)
+//    println(inters)
+//    println(dataWithInter)
+//    println(data.length)
+//    println(dataMap(1,1))
+//    println(dataMap)
+//    println(dataWithInterMap)
 
     (dataMap, dataWithInter)
   }
@@ -134,35 +137,40 @@ object Anova2way{
 
 
     val alpha=(0 until n1).foldLeft(prior)(addAplha(_,_))
+    println(alpha.value.mu)
 
     val alphabeta= (0 until n2).foldLeft(alpha)(addBeta(_,_))
 
     //      val result= (0 until n).foldLeft(alphabeta)(addGroup(_)
     val fullModelRes = fullModel(alphabeta, dataMap)
 
+    sealed abstract class Thing
+    case class obj(ob: Real ) extends Thing
+    case class vec(ve: List[Real]) extends Thing
 
-    //      val model = for {
-    //        mod <- fullModelRes
-    //      } yield
-    //        Map("mu" -> mod.mu,
-    //          "eff1" -> mod.eff1,
-    //          "eff2" -> mod.eff2,
-    //          "sigE1" -> mod.sigE2,
-    //          "sigE2" -> mod.sigE2,
-    //          "sigD" -> mod.sigD)
-    //
-    //      // sampling
-    //      println("Model built. Sampling now (will take a long time)...")
-    //      val thin = 200
-    //      val out = model.sample(HMC(5), 100000, 100000 * thin, thin)
-    //
-    //      //Average parameters
-    //      val grouped= out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-    //      val avg= grouped.map(l=> (l._1,l._2.sum/out.length)) //For the SP we don't need an average
-    //
-    //      println(grouped)
-    //      println(avg)
-    //      println("Sampling finished.")
+          val model = for {
+            mod <- fullModelRes
+          } yield
+            Map("mu" -> mod.mu,
+              "eff1" -> mod.eff1(1),
+              "eff2" -> mod.eff2(1),
+              "sigE1" -> mod.sigE2,
+              "sigE2" -> mod.sigE2,
+              "sigD" -> mod.sigD)
+
+          // sampling
+          println("Model built. Sampling now (will take a long time)...")
+          val thin = 200
+          val out = model.sample(HMC(5), 100000, 100000 * thin, thin)
+
+    println(out)
+          //Average parameters
+          //val grouped= out.flatten.groupBy(_._1).mapValues(_.map(_._2))
+          //val avg= grouped.map(l=> (l._1,l._2.sum/out.length)) //For the SP we don't need an average
+
+          //println(grouped)
+          //println(avg)
+          println("Sampling finished.")
 
   }
 }
