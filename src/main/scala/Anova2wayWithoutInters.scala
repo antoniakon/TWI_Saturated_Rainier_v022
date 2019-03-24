@@ -3,7 +3,7 @@ import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
 import annotation.tailrec
 
-object Anova2way{
+object Anova2wayWithoutInters{
 
   def main(args: Array[String]): Unit = {
     val n1 = 3 // levels of var1
