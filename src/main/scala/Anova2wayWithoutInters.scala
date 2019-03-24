@@ -3,7 +3,7 @@ import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
 import annotation.tailrec
 
-object Anova2wayWithoutInters{
+object Anova2wayWithoutInters {
 
   def main(args: Array[String]): Unit = {
     val n1 = 3 // levels of var1
@@ -60,37 +60,37 @@ object Anova2wayWithoutInters{
     eff1 <- Normal(1, 0.2).param
     eff2 <- Normal(1, 0.2).param
     sigE1 <- LogNormal(0, 2).param
-    sigE2 <- Normal(1,0.2).param
+    sigE2 <- Normal(1, 0.2).param
     sigD <- LogNormal(1, 4).param
   } yield (MyStructure(mu, List(eff1), List(eff2), sigE1, sigE2, sigD))
 
   /**
     * Add the main effects of alpha
     */
-  def addAplha(current: RandomVariable[MyStructure], i: Int): RandomVariable[MyStructure]= {
+  def addAplha(current: RandomVariable[MyStructure], i: Int): RandomVariable[MyStructure] = {
     for {
       cur <- current
       gm_1 <- Normal(0, cur.sigE1).param
-    } yield (MyStructure(cur.mu, gm_1::cur.eff1, cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
+    } yield (MyStructure(cur.mu, gm_1 :: cur.eff1, cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
   }
 
   /**
     * Add the main effects of beta
     */
-  def addBeta(current: RandomVariable[MyStructure], j: Int): RandomVariable[MyStructure]= {
+  def addBeta(current: RandomVariable[MyStructure], j: Int): RandomVariable[MyStructure] = {
     for {
       cur <- current
       gm_2 <- Normal(0, cur.sigE2).param
-    } yield (MyStructure(cur.mu, cur.eff1, gm_2::cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
+    } yield (MyStructure(cur.mu, cur.eff1, gm_2 :: cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
   }
 
   /**
     * Fit to the data per group
     */
-  def addGroup(current: RandomVariable[MyStructure], i: Int, j:Int, dataMap: Map[(Int, Int), Vector[Double] ] ): RandomVariable[MyStructure] = {
+  def addGroup(current: RandomVariable[MyStructure], i: Int, j: Int, dataMap: Map[(Int, Int), Vector[Double]]): RandomVariable[MyStructure] = {
     for {
       cur <- current
-      _<- Normal(cur.mu + cur.eff1(i) + cur.eff2(j), cur.sigD).fit(dataMap(i,j))
+      _ <- Normal(cur.mu + cur.eff1(i) + cur.eff2(j), cur.sigD).fit(dataMap(i, j))
     } yield (MyStructure(cur.mu, cur.eff1, cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
 
   }
@@ -98,18 +98,18 @@ object Anova2wayWithoutInters{
   /**
     * Add all the main effects for each group. Version: Recursion
     */
-  @tailrec def addAllEffRecursive(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double]], i: Int, j: Int ) : RandomVariable[MyStructure] = {
+  @tailrec def addAllEffRecursive(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double]], i: Int, j: Int): RandomVariable[MyStructure] = {
 
     val n1 = alphabeta.value.eff1.length-1
     val n2 = alphabeta.value.eff2.length-1
 
     val temp = addGroup(alphabeta, i, j, dataMap)
 
-    if (i == n1-1 && j == n2-1) {
+    if (i == n1 - 1 && j == n2 - 1) {
       temp
     } else {
-      val nextJ = if (j < n2-1) j+1 else 0
-      val nextI = if (j < n2-1) i else i+1
+      val nextJ = if (j < n2 - 1) j + 1 else 0
+      val nextI = if (j < n2 - 1) i else i + 1
       addAllEffRecursive(temp, dataMap, nextI, nextJ)
     }
   }
@@ -144,13 +144,13 @@ object Anova2wayWithoutInters{
   /**
     * Use Rainier for modelling the main effects only, without interactions
     */
-  def mainEffects(dataMap: Map[(Int, Int), Vector[Double] ], rngS: ScalaRNG, n1: Int, n2:Int): Unit= {
-    implicit val rng= rngS
-    val n= dataMap.size //No of groups
+  def mainEffects(dataMap: Map[(Int, Int), Vector[Double]], rngS: ScalaRNG, n1: Int, n2: Int): Unit = {
+    implicit val rng = rngS
+    val n = dataMap.size //No of groups
 
-    val alpha=(0 until n1).foldLeft(prior)(addAplha(_,_))
+    val alpha = (0 until n1).foldLeft(prior)(addAplha(_, _))
 
-    val alphabeta= (0 until n2).foldLeft(alpha)(addBeta(_,_))
+    val alphabeta = (0 until n2).foldLeft(alpha)(addBeta(_, _))
 
     val fullModelRes = fullModel(alphabeta, dataMap)
 
@@ -173,8 +173,8 @@ object Anova2wayWithoutInters{
     val out = model.sample(HMC(5), 100000, 100000 * thin, thin)
 
     //Average parameters
-    val grouped= out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-    val avg= grouped.map(l=> (l._1,l._2.sum/out.length))
+    val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
+    val avg = grouped.map(l => (l._1, l._2.sum / out.length))
 
     //println(grouped)
     println(avg)
