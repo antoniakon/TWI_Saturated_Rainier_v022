@@ -85,6 +85,30 @@ object Anova2wayWithInters{
       gm_2 <- Normal(0, cur.sigE2).param
     } yield (MyStructure(cur.mu, cur.effa, gm_2::cur.effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD))
   }
+  /**
+    * Add the main effects of the interactions
+    */
+  def addGamma(current: RandomVariable[MyStructure]): RandomVariable[MyStructure]= {
+    val n1 = current.value.effa.length-1
+    val n2 = current.value.effb.length-1
+
+    var tempGamma: RandomVariable[MyStructure] = current
+
+    for (i <- 0 until n1) {
+      for (j <- 0 until n2) {
+
+        tempGamma.value.effg(i)(j) = addGammaEff(current)
+      }
+    }
+    tempGamma
+  }
+
+  def addGammaEff(current: RandomVariable[MyStructure])= {
+    for {
+      cur <- current
+      gm_3 <- Normal(0, cur.sigInter).param
+    } yield gm_3
+  }
 
   /**
     * Fit to the data per group
@@ -92,7 +116,7 @@ object Anova2wayWithInters{
   def addGroup(current: RandomVariable[MyStructure], i: Int, j:Int, dataMap: Map[(Int, Int), Vector[Double] ] ): RandomVariable[MyStructure] = {
     for {
       cur <- current
-      _<- Normal(cur.mu + cur.effa(i) + cur.effb(j), cur.sigD).fit(dataMap(i,j))
+      _<- Normal(cur.mu + cur.effa(i) + cur.effb(j) + cur.effg(i)(j), cur.sigD).fit(dataMap(i,j))
     } yield (MyStructure(cur.mu, cur.effa, cur.effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD))
 
   }
@@ -152,9 +176,11 @@ object Anova2wayWithInters{
     implicit val rng= rngS
     val n= dataMap.size //No of groups
 
-    val alpha=(0 until n1-1).foldLeft(prior)(addAplha(_,_))
+    val alpha = (0 until n1-1).foldLeft(prior)(addAplha(_,_))
 
-    val alphabeta= (0 until n2-1).foldLeft(alpha)(addBeta(_,_))
+    val alphabeta = (0 until n2-1).foldLeft(alpha)(addBeta(_,_))
+
+    val gammaEff = addGamma(alphabeta)
 
     val fullModelRes = fullModel(alphabeta, dataMap)
 
@@ -186,5 +212,4 @@ object Anova2wayWithInters{
 
   }
 }
-
 
