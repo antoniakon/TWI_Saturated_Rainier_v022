@@ -53,7 +53,7 @@ object Anova2wayWithInters{
   }
 
   // build and fit model
-  case class MyStructure(mu: Real, effa: List[Real], effb: List[Real], effg: Array[Array[Real]], sigE1: Real, sigE2: Real, sigInter: Real, sigD: Real )
+  case class MyStructure(mu: Real, effa: Array[Real], effb: Array[Real], effg: Array[Array[Real]], sigE1: Real, sigE2: Real, sigInter: Real, sigD: Real )
 
   private val prior = for {
     mu <- Normal(5, 10).param
@@ -64,50 +64,72 @@ object Anova2wayWithInters{
     sigB <- LogNormal(1,0.2).param
     sigG <- LogNormal(1,0.2).param
     sigD <- LogNormal(1, 4).param
-  } yield MyStructure(mu, List(eff1), List(eff2), Array(Array(effG)), sigA, sigB, sigD, sigG)
+  } yield MyStructure(mu, Array(eff1), Array(eff2), Array(Array(effG)), sigA, sigB, sigD, sigG)
 
   /**
     * Add the main effects of alpha
     */
-  def addAplha(current: RandomVariable[MyStructure], i: Int): RandomVariable[MyStructure]= {
+//  def addAplha(current: RandomVariable[MyStructure], i: Int): RandomVariable[MyStructure]= {
+//    for {
+//      cur <- current
+//      gm_1 <- Normal(0, cur.sigE1).param
+//    } yield (MyStructure(cur.mu, gm_1::cur.effa, cur.effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD))
+//  }
+
+  def addAlpha(current: RandomVariable[MyStructure], n1:Int) = {
+    val effa = Array.fill(n1) { Normal(0, current.value.sigE1).param.value }
+
     for {
       cur <- current
-      gm_1 <- Normal(0, cur.sigE1).param
-    } yield (MyStructure(cur.mu, gm_1::cur.effa, cur.effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD))
+    } yield MyStructure(cur.mu, effa, cur.effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD)
   }
 
-  /**
-    * Add the main effects of beta
-    */
-  def addBeta(current: RandomVariable[MyStructure], j: Int): RandomVariable[MyStructure]= {
+//  /**
+//    * Add the main effects of beta
+//    */
+//  def addBeta(current: RandomVariable[MyStructure], j: Int): RandomVariable[MyStructure]= {
+//    for {
+//      cur <- current
+//      gm_2 <- Normal(0, cur.sigE2).param
+//    } yield (MyStructure(cur.mu, cur.effa, gm_2::cur.effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD))
+//  }
+
+  def addBeta(current: RandomVariable[MyStructure], n2:Int) = {
+    val effb = Array.fill(n2) { Normal(0, current.value.sigE2).param.value }
+
     for {
       cur <- current
-      gm_2 <- Normal(0, cur.sigE2).param
-    } yield (MyStructure(cur.mu, cur.effa, gm_2::cur.effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD))
+    } yield MyStructure(cur.mu, cur.effa, effb, cur.effg, cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD)
   }
+
+
   /**
     * Add the main effects of the interactions
     */
-  def addGamma(current: RandomVariable[MyStructure]): RandomVariable[MyStructure]= {
-    val n1 = current.value.effa.length-1
-    val n2 = current.value.effb.length-1
-
-    var tempGamma: RandomVariable[MyStructure] = current
-
-    for (i <- 0 until n1) {
-      for (j <- 0 until n2) {
-
-        tempGamma.value.effg(i)(j) = addGammaEff(current)
-      }
-    }
-    tempGamma
-  }
+//  def addGamma(current: RandomVariable[MyStructure]): RandomVariable[MyStructure]= {
+//    val n1 = current.value.effa.length-1
+//    val n2 = current.value.effb.length-1
+//
+//    var tempGamma: RandomVariable[MyStructure] = current
+//
+//    for (i <- 0 until n1) {
+//      for (j <- 0 until n2) {
+//
+//        tempGamma.value.effg(i)(j) = addGammaEff(current)
+//      }
+//    }
+//    tempGamma
+//  }
 
   def addGammaEff(current: RandomVariable[MyStructure])= {
+    val n1 = current.value.effa.length
+    val n2 = current.value.effb.length
+
+    val effg = Array.fill(n1) { Array.fill(n2) { Normal(0, current.value.sigInter).param.value } }
     for {
       cur <- current
-      gm_3 <- Normal(0, cur.sigInter).param
-    } yield gm_3
+    } yield MyStructure(cur.mu, cur.effa, cur.effb, effg , cur.sigE1, cur.sigE2, cur.sigInter, cur.sigD)
+
   }
 
   /**
@@ -176,13 +198,16 @@ object Anova2wayWithInters{
     implicit val rng= rngS
     val n= dataMap.size //No of groups
 
-    val alpha = (0 until n1-1).foldLeft(prior)(addAplha(_,_))
+//    val alpha = (0 until n1-1).foldLeft(prior)(addAplha(_,_))
+    val alpha = addAlpha(prior, n1)
 
-    val alphabeta = (0 until n2-1).foldLeft(alpha)(addBeta(_,_))
+//    val alphabeta = (0 until n2-1).foldLeft(alpha)(addBeta(_,_))
+    val alphabeta = addBeta(alpha, n2)
 
-    val gammaEff = addGamma(alphabeta)
 
-    val fullModelRes = fullModel(alphabeta, dataMap)
+    val gammaEff = addGammaEff(alphabeta)
+
+    val fullModelRes = fullModel(gammaEff, dataMap)
 
     //sealed abstract class Thing
     //case class obj(ob: Real ) extends Thing
@@ -193,6 +218,7 @@ object Anova2wayWithInters{
     } yield Map("mu" -> mod.mu,
       "eff1" -> mod.effa(0),
       "eff2" -> mod.effb(0),
+      "effg00" -> mod.effg(0)(0),
       "sigE1" -> mod.sigE1,
       "sigE2" -> mod.sigE2,
       "sigD" -> mod.sigD)

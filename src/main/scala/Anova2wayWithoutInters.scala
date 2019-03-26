@@ -46,7 +46,7 @@ object Anova2wayWithoutInters {
     //    println(dataWithInter)
     //    println(data.length)
     //    println(dataMap(1,1))
-    //    println(dataMap)
+      //  println(dataMap.keys)
     //    println(dataWithInterMap)
 
     (dataMap, dataWithInter)
@@ -59,8 +59,8 @@ object Anova2wayWithoutInters {
     mu <- Normal(5, 10).param
     eff1 <- Normal(1, 0.2).param
     eff2 <- Normal(1, 0.2).param
-    sigE1 <- LogNormal(0, 2).param
-    sigE2 <- Normal(1, 0.2).param
+    sigE1 <- LogNormal(1, 0.2).param
+    sigE2 <- LogNormal(1, 0.2).param
     sigD <- LogNormal(1, 4).param
   } yield (MyStructure(mu, List(eff1), List(eff2), sigE1, sigE2, sigD))
 
@@ -71,7 +71,18 @@ object Anova2wayWithoutInters {
     for {
       cur <- current
       gm_1 <- Normal(0, cur.sigE1).param
-    } yield (MyStructure(cur.mu, gm_1 :: cur.eff1, cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
+    } yield MyStructure(
+      cur.mu,
+      if (i==0) { //replace prior value
+        List(gm_1)
+      } else {
+//        cur.eff1 :+ gm_1
+        gm_1 :: cur.eff1
+      },
+      cur.eff2,
+      cur.sigE1,
+      cur.sigE2,
+      cur.sigD)
   }
 
   /**
@@ -81,7 +92,18 @@ object Anova2wayWithoutInters {
     for {
       cur <- current
       gm_2 <- Normal(0, cur.sigE2).param
-    } yield (MyStructure(cur.mu, cur.eff1, gm_2 :: cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
+    } yield MyStructure(
+      cur.mu,
+      cur.eff1,
+      if (j==0) { //replace prior value
+        List(gm_2)
+      } else {
+//        cur.eff2 :+ gm_2
+        gm_2 :: cur.eff2
+      },
+      cur.sigE1,
+      cur.sigE2,
+      cur.sigD)
   }
 
   /**
@@ -91,7 +113,7 @@ object Anova2wayWithoutInters {
     for {
       cur <- current
       _ <- Normal(cur.mu + cur.eff1(i) + cur.eff2(j), cur.sigD).fit(dataMap(i, j))
-    } yield (MyStructure(cur.mu, cur.eff1, cur.eff2, cur.sigE1, cur.sigE2, cur.sigD))
+    } yield cur
 
   }
 
@@ -100,8 +122,8 @@ object Anova2wayWithoutInters {
     */
   @tailrec def addAllEffRecursive(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double]], i: Int, j: Int): RandomVariable[MyStructure] = {
 
-    val n1 = alphabeta.value.eff1.length-1
-    val n2 = alphabeta.value.eff2.length-1
+    val n1 = alphabeta.value.eff1.length
+    val n2 = alphabeta.value.eff2.length
 
     val temp = addGroup(alphabeta, i, j, dataMap)
 
@@ -118,8 +140,8 @@ object Anova2wayWithoutInters {
     * Add all the main effects for each group. Version: Loop
     */
   def addAllEffLoop(alphabeta: RandomVariable[MyStructure], dataMap: Map[(Int, Int), Vector[Double] ]) : RandomVariable[MyStructure] = {
-    val n1 = alphabeta.value.eff1.length-1
-    val n2 = alphabeta.value.eff2.length-1
+    val n1 = alphabeta.value.eff1.length
+    val n2 = alphabeta.value.eff2.length
 
     var tempAlphaBeta: RandomVariable[MyStructure] = alphabeta
 
@@ -170,7 +192,7 @@ object Anova2wayWithoutInters {
     // sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 200
-    val out = model.sample(HMC(5), 100000, 100000 * thin, thin)
+    val out = model.sample(HMC(5), 100000, 10000 * thin, thin)
 
     //Average parameters
     val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
