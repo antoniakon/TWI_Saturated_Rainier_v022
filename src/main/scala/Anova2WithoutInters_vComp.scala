@@ -8,8 +8,11 @@ import annotation.tailrec
 object Anova2WithoutInters_vComp {
 
   def main(args: Array[String]): Unit = {
-
-    dataProcessing()
+    val rng = ScalaRNG(3)
+    val (data, n1, n2) = dataProcessing()
+    println(n1)
+    println(data)
+    //mainEffects(dataMap, rng, n1, n2)
 
   }
 
@@ -17,7 +20,7 @@ object Anova2WithoutInters_vComp {
     * Generate data with and without interactions
     */
   //def dataProcessing(): Map[(Int, Int), Vector[Double]] = {
-  def dataProcessing() = {
+  def dataProcessing(): (Map[(Int,Int), Seq[Double]], Int, Int) = {
     val data = csvread(new File("/home/antonia/ResultsFromBessel/CompareRainier/simulNoInter.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
@@ -34,14 +37,10 @@ object Anova2WithoutInters_vComp {
     }
 
     val dataMap = (dataList zip y).groupBy(_._1).map{ case (k,v) => (k,v.map(_._2))}
-    println(alpha)
-    println(beta)
-    println(dataMap)
-    print(dataMap(1,2))
-
+    (dataMap, nj, nk)
   }
 
-//  // build and fit model
+// // build and fit model
 //  case class MyStructure(mu: Real, eff1: List[Real], eff2: List[Real], sigE1: Real, sigE2: Real, sigD: Real)
 //
 //  private val prior = for {
@@ -168,5 +167,5 @@ object Anova2WithoutInters_vComp {
 //    println("Sampling finished.")
 //
 //  }
-//
+
 }
