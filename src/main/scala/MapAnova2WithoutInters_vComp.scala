@@ -144,10 +144,6 @@ object MapAnova2WithoutInters_vComp {
 
     val fullModelRes = fullModel(prior, dataMap)
 
-    //sealed abstract class Thing
-    //case class obj(ob: Real ) extends Thing
-    //case class vec(ve: List[Real]) extends Thing
-
     val model = for {
       mod <- fullModelRes
     } yield Map("mu" -> mod("mu"),
@@ -161,23 +157,28 @@ object MapAnova2WithoutInters_vComp {
     println("Model built. Sampling now (will take a long time)...")
     val thin = 200
     val out = model.sample(HMC(5), 10000, 10 * thin, thin)
+    println("Sampling finished.")
 
-    //Average parameters
-
+    //Separate the parameters
     val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
     val effects1= grouped.filter((t) => t._1 =="eff1")
     val effects2= grouped.filter((t) => t._1 =="eff2")
-    val sigE1= grouped.filter((t) => t._1 =="sigE1")
-    val sigE2= grouped.filter((t) => t._1 =="sigE2")
-    val sigD= grouped.filter((t) => t._1 =="sigD")
+    val sigE1= grouped.filter((t) => t._1 =="sigE1").map{case (k,v) => v}.flatten.flatten
+    val sigE2= grouped.filter((t) => t._1 =="sigE2").map{case (k,v) => v}.flatten.flatten
+    val sigD= grouped.filter((t) => t._1 =="sigD").map{case (k,v) => v}.flatten.flatten
+
+    def mean(list:Iterable[Double]):Double =
+       if(list.isEmpty) 0 else list.sum/list.size
+
 //    val avg = grouped.map(l => (l._1, l._2.sum / out.length))
 
-    //println(grouped)
-    println(effects1)
+//    println(grouped)
+
+    //Print the average
+    println(s"sigE1: ", mean(sigE1))
+    println(s"sigE2: ", mean(sigE2))
+    println(s"sigD: ", mean(sigD))
     println(grouped)
-
-    println("Sampling finished.")
-
   }
 
 }
