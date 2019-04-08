@@ -57,12 +57,10 @@ object Anova2wayWithoutInters {
 
   private val prior = for {
     mu <- Normal(5, 10).param
-    eff1 <- Normal(1, 0.2).param
-    eff2 <- Normal(1, 0.2).param
     sigE1 <- LogNormal(1, 0.2).param
     sigE2 <- LogNormal(1, 0.2).param
     sigD <- LogNormal(1, 4).param
-  } yield (MyStructure(mu, List(eff1), List(eff2), sigE1, sigE2, sigD))
+  } yield (MyStructure(mu, Nil, Nil, sigE1, sigE2, sigD))
 
   /**
     * Add the main effects of alpha
@@ -71,18 +69,7 @@ object Anova2wayWithoutInters {
     for {
       cur <- current
       gm_1 <- Normal(0, cur.sigE1).param
-    } yield MyStructure(
-      cur.mu,
-      if (i==0) { //replace prior value
-        List(gm_1)
-      } else {
-//        cur.eff1 :+ gm_1
-        gm_1 :: cur.eff1
-      },
-      cur.eff2,
-      cur.sigE1,
-      cur.sigE2,
-      cur.sigD)
+    } yield MyStructure(cur.mu, gm_1 :: cur.eff1, cur.eff2, cur.sigE1, cur.sigE2, cur.sigD)
   }
 
   /**
@@ -92,18 +79,7 @@ object Anova2wayWithoutInters {
     for {
       cur <- current
       gm_2 <- Normal(0, cur.sigE2).param
-    } yield MyStructure(
-      cur.mu,
-      cur.eff1,
-      if (j==0) { //replace prior value
-        List(gm_2)
-      } else {
-//        cur.eff2 :+ gm_2
-        gm_2 :: cur.eff2
-      },
-      cur.sigE1,
-      cur.sigE2,
-      cur.sigD)
+    } yield MyStructure(cur.mu, cur.eff1, gm_2 :: cur.eff2,cur.sigE1,cur.sigE2, cur.sigD)
   }
 
   /**
