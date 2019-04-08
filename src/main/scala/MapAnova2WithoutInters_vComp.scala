@@ -158,27 +158,36 @@ object MapAnova2WithoutInters_vComp {
     val thin = 200
     val out = model.sample(HMC(5), 10000, 10 * thin, thin)
     println("Sampling finished.")
-
+    
     //Separate the parameters
     val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-    val effects1= grouped.filter((t) => t._1 =="eff1")
-    val effects2= grouped.filter((t) => t._1 =="eff2")
-    val sigE1= grouped.filter((t) => t._1 =="sigE1").map{case (k,v) => v}.flatten.flatten
-    val sigE2= grouped.filter((t) => t._1 =="sigE2").map{case (k,v) => v}.flatten.flatten
-    val sigD= grouped.filter((t) => t._1 =="sigD").map{case (k,v) => v}.flatten.flatten
+    val effects1 = grouped.filter((t) => t._1 =="eff1").map{case (k,v) => v}.flatten
+    val effects2 = grouped.filter((t) => t._1 =="eff2").map{case (k,v) => v}.flatten
+    val sigE1 = grouped.filter((t) => t._1 =="sigE1").map{case (k,v) => v}.flatten.flatten
+    val sigE2 = grouped.filter((t) => t._1 =="sigE2").map{case (k,v) => v}.flatten.flatten
+    val sigD = grouped.filter((t) => t._1 =="sigD").map{case (k,v) => v}.flatten.flatten
+    val mu = grouped.filter((t) => t._1 =="mu").map{case (k,v) => v}.flatten.flatten
 
+    // Find the averages
     def mean(list:Iterable[Double]):Double =
        if(list.isEmpty) 0 else list.sum/list.size
 
+    val sigE1A = mean(sigE1)
+    val sigE2A = mean(sigE2)
+    val sigDA = mean(sigD)
+    val muA = mean(mu)
+    val eff1A = effects1.transpose.map(x => x.sum/x.size.toDouble)
+    val eff2A = effects2.transpose.map(x => x.sum/x.size.toDouble)
+
 //    val avg = grouped.map(l => (l._1, l._2.sum / out.length))
 
-//    println(grouped)
-
     //Print the average
-    println(s"sigE1: ", mean(sigE1))
-    println(s"sigE2: ", mean(sigE2))
-    println(s"sigD: ", mean(sigD))
-    println(grouped)
+    println(s"sigE1: ", sigE1A)
+    println(s"sigE2: ", sigE2A)
+    println(s"sigD: ", sigDA)
+    println(s"mu: ", muA)
+    println(s"effects1: ", eff1A)
+    println(s"effects2: ", eff2A)
   }
 
 }
