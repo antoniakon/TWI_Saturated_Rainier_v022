@@ -121,7 +121,7 @@ object MapAnova2wayWithInters_vComp {
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 200
-    val out = model.sample(HMC(5), 100000, 10000 * thin, thin)
+    val out = model.sample(HMC(5), 10, 100 * thin, thin)
     println("Sampling finished.")
 
     //Print the results
@@ -131,15 +131,24 @@ object MapAnova2wayWithInters_vComp {
       * Takes the result of the sampling and processes and prints the results
       */
     def printResults (out: List[Map[String, Seq[Seq[Double]]]] ) = {
+
+      def flattenSigMu(vars: String, grouped:  Map[String, List[Seq[Seq[Double]]]]):  Iterable[Double] ={
+        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.flatten
+      }
+
+      def flattenEffects(vars: String, grouped:  Map[String, List[Seq[Seq[Double]]]]):  Iterable[Seq[Double]] ={
+        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten
+      }
+
       //Separate the parameters
       val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-      val effects1 = grouped.filter((t) => t._1 == "eff1").map { case (k, v) => v }.flatten.flatten
-      val effects2 = grouped.filter((t) => t._1 == "eff2").map { case (k, v) => v }.flatten.flatten
-      val sigE1 = grouped.filter((t) => t._1 == "sigE1").map { case (k, v) => v }.flatten.flatten.flatten
-      val sigE2 = grouped.filter((t) => t._1 == "sigE2").map { case (k, v) => v }.flatten.flatten.flatten
-      val sigD = grouped.filter((t) => t._1 == "sigD").map { case (k, v) => v }.flatten.flatten.flatten
-      val sigInter = grouped.filter((t) => t._1 == "sigInter").map { case (k, v) => v }.flatten.flatten.flatten
-      val mu = grouped.filter((t) => t._1 == "mu").map { case (k, v) => v }.flatten.flatten.flatten
+      val effects1 = flattenEffects("eff1", grouped)
+      val effects2 = flattenEffects("eff2", grouped)
+      val sigE1 = flattenSigMu("sigE1", grouped)
+      val sigE2 = flattenSigMu("sigE2", grouped)
+      val sigD = flattenSigMu("sigD", grouped)
+      val sigInter = flattenSigMu("sigInter", grouped)
+      val mu = flattenSigMu("mu", grouped)
 
       // Find the averages
       def mean(list: Iterable[Double]): Double =
