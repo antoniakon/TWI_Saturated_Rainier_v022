@@ -4,6 +4,7 @@ import com.stripe.rainier.compute._
 import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
 import scala.annotation.tailrec
+import math._
 
 object MapAnova2WithoutInters_vComp {
 
@@ -24,14 +25,14 @@ object MapAnova2WithoutInters_vComp {
     val beta = data(::, 2).map(_.toInt)
     val nj = alpha.toArray.distinct.length //the number of levels for the first variable
     val nk = beta.toArray.distinct.length //the number of levels for the second variable
-    val l= alpha.length
+    val l= alpha.length // the number of observations
     var dataList = Seq[(Int, Int)]()
 
     for (i <- 0 until l){
       dataList = dataList :+ (alpha(i),beta(i))
     }
 
-    val dataMap = (dataList zip y).groupBy(_._1).map{ case (k,v) => ((k._1-1,k._2-1) ,v.map(_._2))}
+    val dataMap = (dataList zip y).groupBy(_._1).map{ case (k,v) => ((k._1-1,k._2-1) ,v.map(_._2))} //Bring the data to the map format
     (dataMap, nj, nk)
   }
 
@@ -45,34 +46,25 @@ object MapAnova2WithoutInters_vComp {
 
     val prior = for {
       mu <- Normal(0, 0.0001).param
-      sigE1 <- Gamma(1, 0.0001).param
-      sigE2 <- Gamma(1, 0.0001).param
-      sigD <- Gamma(1, 0.0001).param
-      eff11= List.fill(n1) { Normal(0, sigE1).param.value }
-      eff22 = List.fill(n2) { Normal(0, sigE2).param.value }
-    } yield Map("mu" -> List(mu), "eff1" -> eff11, "eff2" -> eff22, "sigE1" -> List(sigE1), "sigE2" -> List(sigE2), "sigD" -> List(sigD))
-
-    //  /**
-    //    * Add the main effects of alpha
-    //    */
-    //  def addAplha(current: RandomVariable[Map[String, List[Real]]], i: Int): RandomVariable[Map[String, List[Real]]] = {
-    //    for {
-    //      cur <- current
-    //      gm_1 <- Normal(0, cur("sigE1")(0)).param
-    //      newEff1 = gm_1::cur("eff1")
-    //    } yield  Map("mu" -> current("mu"), "eff1" -> newEff1, "eff2" -> current("eff2"), "sigE1" -> current("sigE1"), "sigE2" -> current("sigE2"), "sigD" -> current("sigD"))
-    //  }
-    //
-    //    /**
-    //    * Add the main effects of beta
-    //    */
-    //    def addBeta(current: RandomVariable[Map[String, List[Real]]], i: Int): RandomVariable[Map[String, List[Real]]] = {
-    //      for {
-    //        cur <- current
-    //        gm_2 <- Normal(0, cur("sigE2")(0)).param
-    //        newEff2 = gm_2::cur("eff1")
-    //      } yield  Map("mu" -> current("mu"), "eff1" -> current("eff1"), "eff2" -> newEff2, "sigE1" -> current("sigE1"), "sigE2" -> current("sigE2"), "sigD" -> current("sigD"))
-    //    }
+      // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
+      tauE1RV = Gamma(1, 10000).param
+      tauE1 <- tauE1RV
+      sdE1LD = tauE1RV.sample(1)
+      sdE1= sqrt(1/sdE1LD(0))
+      // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
+      tauE2RV = Gamma(1, 10000).param
+      tauE2 <- tauE2RV
+      sdE2LD = tauE2RV.sample(1)
+      sdE2= sqrt(1/sdE2LD(0))
+      // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
+      tauDRV = Gamma(1, 10000).param
+      tauD <- tauDRV
+      sdDLD = tauDRV.sample(1)
+      sdDR= Real(sqrt(1/sdDLD(0)))
+      // Sample the effects
+      eff11= List.fill(n1) { Normal(0, sdE1).param.value }
+      eff22 = List.fill(n2) { Normal(0, sdE2).param.value }
+    } yield Map("mu" -> List(mu), "eff1" -> eff11, "eff2" -> eff22, "tauE1" -> List(tauE1), "tauE2" -> List(tauE2), "sdD" -> List(sdDR))
 
     /**
       * Fit to the data per group
@@ -80,8 +72,9 @@ object MapAnova2WithoutInters_vComp {
     def addGroup(current: RandomVariable[Map[String, List[Real]]], i: Int, j: Int, dataMap: Map[(Int, Int), Seq[Double]]): RandomVariable[Map[String, List[Real]]] = {
       for {
         cur <- current
+        tauDR = cur("sdD")(0)
         gm = cur("mu")(0) + cur("eff1")(i) + cur("eff2")(j)
-        _ <- Normal(gm, cur("sigD")(0)).fit(dataMap(i, j))
+        _ <- Normal(gm, tauDR).fit(dataMap(i, j))
       } yield cur
     }
 
@@ -124,9 +117,6 @@ object MapAnova2WithoutInters_vComp {
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
 
-    //    val alpha = (0 until n1).foldLeft(prior)(addAplha(_, _))
-    //    val alphabeta = (0 until n2).foldLeft(alpha)(addBeta(_, _))
-
     val fullModelRes = fullModel(prior, dataMap)
 
     val model = for {
@@ -134,11 +124,11 @@ object MapAnova2WithoutInters_vComp {
     } yield Map("mu" -> mod("mu"),
       "eff1" -> mod("eff1"),
       "eff2" -> mod("eff2"),
-      "sigE1" -> mod("sigE1"),
-      "sigE2" -> mod("sigE2"),
-      "sigD" -> mod("sigD"))
+      "tauE1" -> mod("tauE1"),
+      "tauE2" -> mod("tauE2"),
+      "sdD" -> mod("sdD"))
 
-    // sampling
+    // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 200
     val out = model.sample(HMC(5), 10000, 10 * thin, thin)
@@ -158,9 +148,9 @@ object MapAnova2WithoutInters_vComp {
       val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
       val effects1 = flattenEffects("eff1", grouped)
       val effects2 = flattenEffects("eff2", grouped)
-      val sigE1 = flattenSigMu("sigE1", grouped)
-      val sigE2 = flattenSigMu("sigE2", grouped)
-      val sigD = flattenSigMu("sigD", grouped)
+      val sigE1 = flattenSigMu("tauE1", grouped)
+      val sigE2 = flattenSigMu("tauE2", grouped)
+      val sigD = flattenSigMu("sdD", grouped)
       val mu = flattenSigMu("mu", grouped)
 
       // Find the averages
@@ -175,9 +165,9 @@ object MapAnova2WithoutInters_vComp {
       val eff2A = effects2.transpose.map(x => x.sum / x.size.toDouble)
 
       //Print the average
-      println(s"sigE1: ", sigE1A)
-      println(s"sigE2: ", sigE2A)
-      println(s"sigD: ", sigDA)
+      println(s"tauE1: ", sigE1A)
+      println(s"tauE2: ", sigE2A)
+      println(s"sdD: ", sigDA)
       println(s"mu: ", muA)
       println(s"effects1: ", eff1A)
       println(s"effects2: ", eff2A)
