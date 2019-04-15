@@ -1,9 +1,12 @@
 import java.io.File
+
 import breeze.linalg.csvread
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core.{Normal, _}
 import com.stripe.rainier.sampler._
+
 import scala.annotation.tailrec
+import scala.math.sqrt
 
 object MapAnova2wayWithInters_vComp {
 
@@ -44,14 +47,36 @@ object MapAnova2wayWithInters_vComp {
 
     val prior = for {
       mu <- Normal(0, 0.0001).param
-      sigE1 <- Gamma(1, 0.0001).param
-      sigE2 <- Gamma(1, 0.0001).param
+      // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
+      tauE1RV = Gamma(1, 10000).param
+      tauE1 <- tauE1RV
+      sdE1LD = tauE1RV.sample(1)
+      sdE1= sqrt(1/sdE1LD(0))
+
+      // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
+      tauE2RV = Gamma(1, 10000).param
+      tauE2 <- tauE2RV
+      sdE2LD = tauE2RV.sample(1)
+      sdE2= sqrt(1/sdE2LD(0))
+
+      // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
+      tauGRV = Gamma(1, 10000).param
+      tauG <- tauGRV
+      sdGLD = tauGRV.sample(1)
+      sdG= sqrt(1/sdGLD(0))
+
+      // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
+      tauDRV = Gamma(1, 10000).param
+      tauD <- tauDRV
+      sdDLD = tauDRV.sample(1)
+      sdDR= Real(sqrt(1/sdDLD(0)))
+
       sigEg <- Gamma(1, 0.0001).param
       sigD <- Gamma(1, 0.0001).param
-      eff11= Vector.fill(1){Vector.fill(n1) { Normal(0, sigE1).param.value }}
-      eff22 = Vector.fill(1){Vector.fill(n2) { Normal(0, sigE2).param.value }}
-      effinter = Vector.fill(n1) { Vector.fill(n2) { Normal(0, sigEg).param.value } }
-    } yield Map("mu" -> Vector.fill(1,1)(mu), "eff1" -> eff11, "eff2" -> eff22, "effg" -> effinter, "sigE1" -> Vector.fill(1,1)(sigE1), "sigE2" -> Vector.fill(1,1)(sigE2), "sigInter" ->Vector.fill(1,1)(sigEg),  "sigD" -> Vector.fill(1,1)(sigD))
+      eff11= Vector.fill(1){Vector.fill(n1) { Normal(0, sdE1).param.value }}
+      eff22 = Vector.fill(1){Vector.fill(n2) { Normal(0, sdE2).param.value }}
+      effinter = Vector.fill(n1) { Vector.fill(n2) { Normal(0, sdG).param.value } }
+    } yield Map("mu" -> Vector.fill(1,1)(mu), "eff1" -> eff11, "eff2" -> eff22, "effg" -> effinter, "tauE1" -> Vector.fill(1,1)(tauE1), "tauE2" -> Vector.fill(1,1)(tauE2), "tauInter" ->Vector.fill(1,1)(tauG),  "sigD" -> Vector.fill(1,1)(sdDR))
 
     /**
       * Fit to the data per group
@@ -113,15 +138,15 @@ object MapAnova2wayWithInters_vComp {
       "eff1" -> mod("eff1"),
       "eff2" -> mod("eff2"),
       "effg" -> mod("effg"),
-      "sigE1" -> mod("sigE1"),
-      "sigE2" -> mod("sigE2"),
-      "sigInter" -> mod("sigInter"),
+      "sigE1" -> mod("tauE1"),
+      "sigE2" -> mod("tauE2"),
+      "sigInter" -> mod("tauInter"),
       "sigD" -> mod("sigD"))
 
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 200
-    val out = model.sample(HMC(5), 10, 100 * thin, thin)
+    val out = model.sample(HMC(5), 1000, 1000 * thin, thin)
     println("Sampling finished.")
 
     //Print the results
