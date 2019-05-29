@@ -14,7 +14,7 @@ object Anova2WithoutInters_vComp {
   }
 
   /**
-    * Generate data with and without interactions
+    * Process data read from input file
     */
   def dataProcessing(): (Map[(Int,Int), Seq[Double]], Int, Int) = {
     val data = csvread(new File("/home/antonia/ResultsFromBessel/CompareRainier/simulNoInter.csv"))
@@ -152,7 +152,7 @@ object Anova2WithoutInters_vComp {
     // sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 200
-    val out = model.sample(HMC(5), 100, 100 * thin, thin)
+    val out = model.sample(HMC(5), 10000, 10000 * thin, thin)
 
     //Average parameters
     val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
