@@ -103,14 +103,14 @@ object Anova2wayWithInters_v2 {
     }yield MyStructure (cur.mu, cur.eff1, cur.eff2, tempGamma, current.value.sigE1, current.value.sigE2, current.value.sigEg, current.value.sigD)
   }
 
-
-  def addAlpha1(current: RandomVariable[MyStructure], n1:Int) = {
-    val eff1 = List.fill(n1) { Normal(0, current.value.sigE1).param.value }
-
-    for {
-      cur <- current
-    } yield MyStructure(cur.mu, eff1, cur.eff2, cur.effg, cur.sigE1, cur.sigE2, cur.sigEg, cur.sigD)
-  }
+  //Implementation with fill
+//  def addAlpha1(current: RandomVariable[MyStructure], n1:Int) = {
+//    val eff1 = List.fill(n1) { Normal(0, current.value.sigE1).param.value }
+//
+//    for {
+//      cur <- current
+//    } yield MyStructure(cur.mu, eff1, cur.eff2, cur.effg, cur.sigE1, cur.sigE2, cur.sigEg, cur.sigD)
+//  }
 
 
     /**
