@@ -17,8 +17,8 @@ object MapAnova2WithoutInters_vComp {
   /**
     * Process data read from input file
     */
-  def dataProcessing(): (Map[(Int,Int), Seq[Double]], Int, Int) = {
-    val data = csvread(new File("/home/antonia/ResultsFromBessel/CompareRainier/simulNoInter.csv"))
+  def dataProcessing(): (Map[(Int,Int), List[Double]], Int, Int) = {
+    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/try/noInter.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -26,24 +26,27 @@ object MapAnova2WithoutInters_vComp {
     val nj = alpha.toArray.distinct.length //the number of levels for the first variable
     val nk = beta.toArray.distinct.length //the number of levels for the second variable
     val l= alpha.length // the number of observations
-    var dataList = Seq[(Int, Int)]()
+    var dataList = List[(Int, Int)]()
 
     for (i <- 0 until l){
       dataList = dataList :+ (alpha(i),beta(i))
     }
+    //println(dataList)
 
     val dataMap = (dataList zip y).groupBy(_._1).map{ case (k,v) => ((k._1-1,k._2-1) ,v.map(_._2))} //Bring the data to the map format
+    //println(dataMap)
     (dataMap, nj, nk)
+
   }
 
   /**
     * Use Rainier for modelling the main effects only, without interactions
     */
-  def mainEffects(dataMap: Map[(Int, Int), Seq[Double]], rngS: ScalaRNG, n1: Int, n2: Int): Unit = {
+  def mainEffects(dataMap: Map[(Int, Int), List[Double]], rngS: ScalaRNG, n1: Int, n2: Int): Unit = {
 
     implicit val rng = rngS
     val n = dataMap.size //No of groups
-
+    // All prior values for the unknown parameters, defined as follows, are stored in lists, to be able to process and print the results at the end.
     val prior = for {
       mu <- Normal(0, 0.0001).param
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
@@ -69,7 +72,7 @@ object MapAnova2WithoutInters_vComp {
     /**
       * Fit to the data per group
       */
-    def addGroup(current: RandomVariable[Map[String, List[Real]]], i: Int, j: Int, dataMap: Map[(Int, Int), Seq[Double]]): RandomVariable[Map[String, List[Real]]] = {
+    def addGroup(current: RandomVariable[Map[String, List[Real]]], i: Int, j: Int, dataMap: Map[(Int, Int), List[Double]]): RandomVariable[Map[String, List[Real]]] = {
       for {
         cur <- current
         tauDR = cur("sdD")(0)
@@ -81,7 +84,7 @@ object MapAnova2WithoutInters_vComp {
     /**
       * Add all the main effects for each group. Version: Recursion
       */
-    @tailrec def addAllEffRecursive(alphabeta: RandomVariable[Map[String, List[Real]]], dataMap: Map[(Int, Int), Seq[Double]], i: Int, j: Int): RandomVariable[Map[String, List[Real]]] = {
+    @tailrec def addAllEffRecursive(alphabeta: RandomVariable[Map[String, List[Real]]], dataMap: Map[(Int, Int), List[Double]], i: Int, j: Int): RandomVariable[Map[String, List[Real]]] = {
       val temp = addGroup(alphabeta, i, j, dataMap)
 
       if (i == n1 - 1 && j == n2 - 1) {
@@ -96,7 +99,7 @@ object MapAnova2WithoutInters_vComp {
     /**
       * Add all the main effects for each group. Version: Loop
       */
-    def addAllEffLoop(alphabeta: RandomVariable[Map[String, List[Real]]], dataMap: Map[(Int, Int), Seq[Double] ]) : RandomVariable[Map[String, List[Real]]] = {
+    def addAllEffLoop(alphabeta: RandomVariable[Map[String, List[Real]]], dataMap: Map[(Int, Int), List[Double] ]) : RandomVariable[Map[String, List[Real]]] = {
       var tempAlphaBeta: RandomVariable[Map[String, List[Real]]] = alphabeta
 
       for (i <- 0 until n1) {
@@ -112,7 +115,7 @@ object MapAnova2WithoutInters_vComp {
       * We would like something like: val result = (0 until n1)(0 until n2).foldLeft(alphabeta)(addGroup(_,(_,_)))
       * But we can't use foldLeft with double loop so we use an extra function either with loop or recursively
       */
-    def fullModel(alphabeta: RandomVariable[Map[String, List[Real]]], dataMap: Map[(Int, Int), Seq[Double]]) : RandomVariable[Map[String, List[Real]]] = {
+    def fullModel(alphabeta: RandomVariable[Map[String, List[Real]]], dataMap: Map[(Int, Int), List[Double]]) : RandomVariable[Map[String, List[Real]]] = {
       //addAllEffLoop(alphabeta, dataMap)
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
@@ -130,18 +133,18 @@ object MapAnova2WithoutInters_vComp {
 
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
-    val thin = 200
-    val out = model.sample(HMC(5), 10000, 10 * thin, thin)
+    val thin = 10
+    val out = model.sample(HMC(5), 10, 10 * thin, thin)
     println("Sampling finished.")
 
-    def printResults(out: List[Map[String, Seq[Double]]]) = {
+    def printResults(out: List[Map[String, List[Double]]]) = {
 
-      def flattenSigMu(vars: String, grouped: Map[String, List[Seq[Double]]]):  Iterable[Double] ={
-        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten
+      def flattenSigMu(vars: String, grouped: Map[String, List[List[Double]]]):  List[Double] ={
+        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.toList
       }
 
-      def flattenEffects(vars: String, grouped: Map[String, List[Seq[Double]]]):  Iterable[Seq[Double]] ={
-        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten
+      def flattenEffects(vars: String, grouped: Map[String, List[List[Double]]]):  List[List[Double]] ={
+        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.toList
       }
 
       //Separate the parameters
@@ -153,8 +156,22 @@ object MapAnova2WithoutInters_vComp {
       val sigD = flattenSigMu("sdD", grouped)
       val mu = flattenSigMu("mu", grouped)
 
+      //Save results to csv
+      val effects1Mat = DenseMatrix(effects1.map(_.toArray):_*) //make it a denseMatrix to concatenate later
+      val effects2Mat = DenseMatrix(effects2.map(_.toArray):_*) //make it a denseMatrix to concatenate later
+      val sigE1dv = new DenseVector[Double](sigE1.toArray)
+      val sigE2dv = new DenseVector[Double](sigE2.toArray)
+      val sigDdv = new DenseVector[Double](sigD.toArray)
+      val mudv = new DenseVector[Double](mu.toArray)
+      val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigDdv, mudv)
+      println(sigmasMu.rows)
+      val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, sigmasMu.t)
+      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/FullResultsRainierWithoutInter.csv")
+      breeze.linalg.csvwrite(outputFile, results, separator = ',')
+
+
       // Find the averages
-      def mean(list: Iterable[Double]): Double =
+      def mean(list: List[Double]): Double =
         if (list.isEmpty) 0 else list.sum / list.size
 
       val sigE1A = mean(sigE1)
@@ -172,7 +189,8 @@ object MapAnova2WithoutInters_vComp {
       println(s"effects1: ", eff1A)
       println(s"effects2: ", eff2A)
     }
-    printResults(out)
+    val outList = out.map{ v=> v.map { case (k,v) => (k, v.toList)}}
+    printResults(outList)
   }
 
 }
