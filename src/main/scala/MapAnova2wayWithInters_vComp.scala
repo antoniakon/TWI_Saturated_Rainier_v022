@@ -20,7 +20,7 @@ object MapAnova2wayWithInters_vComp {
     * Process data read from input file
     */
   def dataProcessing(): (Map[(Int,Int), Seq[Double]], Int, Int) = {
-    val data = csvread(new File("/home/antonia/ResultsFromBessel/CompareRainier/simulInter.csv"))
+    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/try/inter.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -138,15 +138,15 @@ object MapAnova2wayWithInters_vComp {
       "eff1" -> mod("eff1"),
       "eff2" -> mod("eff2"),
       "effg" -> mod("effg"),
-      "sigE1" -> mod("tauE1"),
-      "sigE2" -> mod("tauE2"),
-      "sigInter" -> mod("tauInter"),
+      "tauE1" -> mod("tauE1"),
+      "tauE2" -> mod("tauE2"),
+      "tauInter" -> mod("tauInter"),
       "sigD" -> mod("sigD"))
 
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
-    val thin = 200
-    val out = model.sample(HMC(5), 1000, 1000 * thin, thin)
+    val thin = 10
+    val out = model.sample(HMC(5), 10000, 10000 * thin, thin)
     println("Sampling finished.")
 
     //Print the results
