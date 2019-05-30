@@ -48,22 +48,22 @@ object MapAnova2wayWithInters_vComp {
     val prior = for {
       mu <- Normal(0, 0.0001).param
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
-      tauE1RV = Gamma(1, 10000).param
-      tauE1 <- tauE1RV
-      sdE1LD = tauE1RV.sample(1)
-      sdE1= sqrt(1/sdE1LD(0))
+      tauE1RV = Gamma(1, 10000).param //RandomVariable[Real]
+      tauE1 <- tauE1RV //Real
+      sdE1LD = tauE1RV.sample(1) //List[Double]
+      sdE1= Real(sqrt(1/sdE1LD(0))) //Real. Without Real() it is double
 
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
       sdE2LD = tauE2RV.sample(1)
-      sdE2= sqrt(1/sdE2LD(0))
+      sdE2= Real(sqrt(1/sdE2LD(0)))
 
-      // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
+      // Sample tau, estimate sd to be used in sampling from Normal the interaction effects
       tauGRV = Gamma(1, 10000).param
       tauG <- tauGRV
       sdGLD = tauGRV.sample(1)
-      sdG= sqrt(1/sdGLD(0))
+      sdG= Real(sqrt(1/sdGLD(0)))
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
@@ -71,12 +71,11 @@ object MapAnova2wayWithInters_vComp {
       sdDLD = tauDRV.sample(1)
       sdDR= Real(sqrt(1/sdDLD(0)))
 
-      sigEg <- Gamma(1, 0.0001).param
-      sigD <- Gamma(1, 0.0001).param
-      eff11= Vector.fill(1){Vector.fill(n1) { Normal(0, sdE1).param.value }}
-      eff22 = Vector.fill(1){Vector.fill(n2) { Normal(0, sdE2).param.value }}
-      effinter = Vector.fill(n1) { Vector.fill(n2) { Normal(0, sdG).param.value } }
-    } yield Map("mu" -> Vector.fill(1,1)(mu), "eff1" -> eff11, "eff2" -> eff22, "effg" -> effinter, "tauE1" -> Vector.fill(1,1)(tauE1), "tauE2" -> Vector.fill(1,1)(tauE2), "tauInter" ->Vector.fill(1,1)(tauG),  "sigD" -> Vector.fill(1,1)(sdDR))
+      // Save all the results to matrices, even if only one element e.g. mu, in order to be able to process and print all the main and interaction effects at the end. Because current has to have one common structure for all the unknown variables (current: RandomVariable[Map[String, Vector[Vector[Real]]]]).
+      eff11= Vector.fill(1){Vector.fill(n1) { Normal(0, sdE1).param.value }} //Fill a matrix (1 x n1) for the main effects of the 1st variable (n1 levels) with samples from Normal(0, sdE1)
+      eff22 = Vector.fill(1){Vector.fill(n2) { Normal(0, sdE2).param.value }} //Fill a matrix (1 x n2) for the main effects of the 2nd variable (n2 levels) with samples from Normal(0, sdE2)
+      effinter = Vector.fill(n1){Vector.fill(n2) { Normal(0, sdG).param.value}} //Fill a matrix (n1 x n2) for the interaction effects with samples from Normal(0, sdG)
+    } yield Map("mu" -> Vector.fill(1,1)(mu), "eff1" -> eff11, "eff2" -> eff22, "effg" -> effinter, "sigE1" -> Vector.fill(1,1)(sdE1), "sigE2" -> Vector.fill(1,1)(sdE2), "sigInter" ->Vector.fill(1,1)(sdG),  "sigD" -> Vector.fill(1,1)(sdDR))
 
     /**
       * Fit to the data per group
@@ -138,9 +137,9 @@ object MapAnova2wayWithInters_vComp {
       "eff1" -> mod("eff1"),
       "eff2" -> mod("eff2"),
       "effg" -> mod("effg"),
-      "tauE1" -> mod("tauE1"),
-      "tauE2" -> mod("tauE2"),
-      "tauInter" -> mod("tauInter"),
+      "sigE1" -> mod("sigE1"),
+      "sigE2" -> mod("sigE2"),
+      "sigInter" -> mod("sigInter"),
       "sigD" -> mod("sigD"))
 
     // Sampling
@@ -176,7 +175,6 @@ object MapAnova2wayWithInters_vComp {
       val sigInter = flattenSigMu("sigInter", grouped)
       val mu = flattenSigMu("mu", grouped)
 
-
       // Find the averages
       def mean(list: List[Double]): Double =
         if (list.isEmpty) 0 else list.sum / list.size
@@ -195,7 +193,6 @@ object MapAnova2wayWithInters_vComp {
 
       val interEff = effectsInter.map(l1 => l1.reduce((a,b)=> a++b)).toList //List[List[Double]] the inner lists represent the iterations. This will have to be stored in a DenseMatrix
 
-
       //Print the average
       println(s"sigE1: ", sigE1A)
       println(s"sigE2: ", sigE2A)
@@ -207,23 +204,19 @@ object MapAnova2wayWithInters_vComp {
       println(s"effects: ", effsum)
 
       //Save results to csv
-      val effects1Mat = DenseMatrix(effects1.map(_.toArray):_*) //make it a denseMatrix to concatenate later
-      val effects2Mat = DenseMatrix(effects2.map(_.toArray):_*) //make it a denseMatrix to concatenate later
-      val interEffMat =  DenseMatrix(interEff.map(_.toArray):_*) //make it a denseMatrix to concatenate later
+      val effects1Mat = DenseMatrix(effects1.map(_.toArray):_*) //make it a denseMatrix to concatenate later for the csv
+      val effects2Mat = DenseMatrix(effects2.map(_.toArray):_*) //make it a denseMatrix to concatenate later for the csv
+      val interEffMat =  DenseMatrix(interEff.map(_.toArray):_*) //make it a denseMatrix to concatenate later for the csv
       val sigE1dv = new DenseVector[Double](sigE1.toArray)
       val sigE2dv = new DenseVector[Double](sigE2.toArray)
       val sigDdv = new DenseVector[Double](sigD.toArray)
       val sigInterdv = new DenseVector[Double](sigInter.toArray)
       val mudv = new DenseVector[Double](mu.toArray)
       val sigmasMu = DenseMatrix(sigE1dv, sigE2dv)
-      println(sigE1dv.length)
-      println(sigDdv.length)
-      println(mudv.length)
-//      val results = DenseMatrix.horzcat(effects1Mat, effects2Mat,  sigmasMu.t)
-//      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/FullResultsRainierWithInter.csv")
-//      breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
-
+      val results = DenseMatrix.horzcat(effects1Mat, effects2Mat,  sigmasMu.t)
+      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/FullResultsRainierWithInter.csv")
+      breeze.linalg.csvwrite(outputFile, results, separator = ',')
     }
   }
 }
