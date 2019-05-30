@@ -1,10 +1,8 @@
 import java.io.File
-
 import breeze.linalg.{DenseMatrix, DenseVector, csvread}
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core.{Normal, _}
 import com.stripe.rainier.sampler._
-
 import scala.annotation.tailrec
 import scala.math.sqrt
 
@@ -46,12 +44,12 @@ object MapAnova2wayWithInters_vComp {
     val n = dataMap.size //No of groups
 
     val prior = for {
-      mu <- Normal(0, 0.0001).param
+      mu <- Normal(0, 100).param //For jags we had: mu~dnorm(0,0.0001) and jags uses precision, so here we use sd = sqrt(1/tau)
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param //RandomVariable[Real]
       tauE1 <- tauE1RV //Real
       sdE1LD = tauE1RV.sample(1) //List[Double]
-      sdE1= Real(sqrt(1/sdE1LD(0))) //Real. Without Real() it is double
+      sdE1= Real(sqrt(1/sdE1LD(0))) //Real. Without Real() it is Double
 
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
@@ -193,7 +191,7 @@ object MapAnova2wayWithInters_vComp {
 
       val interEff = effectsInter.map(l1 => l1.reduce((a,b)=> a++b)).toList //List[List[Double]] the inner lists represent the iterations. This will have to be stored in a DenseMatrix
 
-      //Print the average
+      //Print the mean
       println(s"sigE1: ", sigE1A)
       println(s"sigE2: ", sigE2A)
       println(s"sigD: ", sigDA)
