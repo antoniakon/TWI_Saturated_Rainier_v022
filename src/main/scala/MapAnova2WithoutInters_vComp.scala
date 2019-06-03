@@ -18,7 +18,7 @@ object MapAnova2WithoutInters_vComp {
     * Process data read from input file
     */
   def dataProcessing(): (Map[(Int,Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/try/noInter.csv"))
+    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/300519/withoutInteractions/simulNoInter300519.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -48,26 +48,29 @@ object MapAnova2WithoutInters_vComp {
     val n = dataMap.size //No of groups
     // All prior values for the unknown parameters, defined as follows, are stored in lists, to be able to process and print the results at the end.
     val prior = for {
-      mu <- Normal(0, 0.0001).param
+      mu <- Normal(0, 100).param
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param
       tauE1 <- tauE1RV
       sdE1LD = tauE1RV.sample(1)
-      sdE1= sqrt(1/sdE1LD(0))
+      sdE1= Real(sqrt(1/sdE1LD(0)))
+
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
       sdE2LD = tauE2RV.sample(1)
-      sdE2= sqrt(1/sdE2LD(0))
+      sdE2= Real(sqrt(1/sdE2LD(0)))
+
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
       sdDLD = tauDRV.sample(1)
       sdDR= Real(sqrt(1/sdDLD(0)))
+
       // Sample the effects
       eff11= List.fill(n1) { Normal(0, sdE1).param.value }
       eff22 = List.fill(n2) { Normal(0, sdE2).param.value }
-    } yield Map("mu" -> List(mu), "eff1" -> eff11, "eff2" -> eff22, "tauE1" -> List(tauE1), "tauE2" -> List(tauE2), "sdD" -> List(sdDR))
+    } yield Map("mu" -> List(mu), "eff1" -> eff11, "eff2" -> eff22, "tauE1" -> List(sdE1), "tauE2" -> List(sdE2), "sdD" -> List(sdDR))
 
     /**
       * Fit to the data per group
@@ -133,8 +136,8 @@ object MapAnova2WithoutInters_vComp {
 
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
-    val thin = 10
-    val out = model.sample(HMC(5), 10, 10 * thin, thin)
+    val thin = 100
+    val out = model.sample(HMC(50), 10000, 10000 * thin, thin)
     println("Sampling finished.")
 
     def printResults(out: List[Map[String, List[Double]]]) = {
@@ -166,7 +169,7 @@ object MapAnova2WithoutInters_vComp {
       val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigDdv, mudv)
       println(sigmasMu.rows)
       val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, sigmasMu.t)
-      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/FullResultsRainierWithoutInter.csv")
+      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/300519/withoutInteractions/FullResultsRainierWithoutInterHMC50.csv")
       breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
 
