@@ -13,11 +13,9 @@ project/boot/
 project/plugins/project/
 *.xml
 *.iml
-*.csv
 *.iml
 *.properties
 .idea
-build.sbt
 LICENSE.md
 
 # Scala-IDE specific
