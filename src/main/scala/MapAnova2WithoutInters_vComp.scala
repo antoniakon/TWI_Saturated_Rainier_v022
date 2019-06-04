@@ -4,7 +4,8 @@ import com.stripe.rainier.compute._
 import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
 import scala.annotation.tailrec
-import math._
+import com.stripe.rainier.ir
+
 
 object MapAnova2WithoutInters_vComp {
 
@@ -44,31 +45,34 @@ object MapAnova2WithoutInters_vComp {
     */
   def mainEffects(dataMap: Map[(Int, Int), List[Double]], rngS: ScalaRNG, n1: Int, n2: Int): Unit = {
 
+    def sqrtF(x: Real): Real = {
+      val lx = (Real(0.5) * x.log).exp
+      lx
+    }
+
     implicit val rng = rngS
     val n = dataMap.size //No of groups
     // All prior values for the unknown parameters, defined as follows, are stored in lists, to be able to process and print the results at the end.
     val prior = for {
       mu <- Normal(0, 100).param
+
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param
       tauE1 <- tauE1RV
-      sdE1LD = tauE1RV.sample(1)
-      sdE1= Real(sqrt(1/sdE1LD(0)))
+      sdE1= sqrtF((Real(1))/tauE1)
 
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
-      sdE2LD = tauE2RV.sample(1)
-      sdE2= Real(sqrt(1/sdE2LD(0)))
+      sdE2= sqrtF((Real(1))/tauE2)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
-      sdDLD = tauDRV.sample(1)
-      sdDR= Real(sqrt(1/sdDLD(0)))
+      sdDR= sqrtF((Real(1))/tauD)
 
       // Sample the effects
-      eff11= List.fill(n1) { Normal(0, sdE1).param.value }
+      eff11= List.fill(n1) { Normal(0, sdE1).param.value } //Normal(0, sdE1).param.value Returns a real
       eff22 = List.fill(n2) { Normal(0, sdE2).param.value }
     } yield Map("mu" -> List(mu), "eff1" -> eff11, "eff2" -> eff22, "tauE1" -> List(sdE1), "tauE2" -> List(sdE2), "sdD" -> List(sdDR))
 
