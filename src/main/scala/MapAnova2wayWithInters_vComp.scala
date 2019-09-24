@@ -6,6 +6,8 @@ import com.stripe.rainier.sampler._
 import scala.annotation.tailrec
 import scala.math.sqrt
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.Map
+
 
 object MapAnova2wayWithInters_vComp {
 
@@ -72,43 +74,44 @@ object MapAnova2wayWithInters_vComp {
       tauD <- tauDRV
       sdDR= sqrtF(Real(1.0)/tauD)
 
-    } yield Map("mu" -> DenseMatrix((mu)), "eff1" -> DenseMatrix.zeros[Real](1,n1), "eff2" -> DenseMatrix.zeros[Real](1,n2), "effg" -> DenseMatrix.zeros[Real](n1,n2), "sigE1" -> DenseMatrix((sdE1)), "sigE2" -> DenseMatrix((sdE2)), "sigInter" ->DenseMatrix((sdG)),  "sigD" -> DenseMatrix((sdDR)))
+    } yield Map("mu" -> Map((0,0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0,0) -> sdE1), "sigE2" -> Map((0,0) -> sdE2), "sigInter" ->Map((0,0) -> sdG),  "sigD" -> Map((0,0) -> sdDR))
 
     /**
       * Add the main effects of alpha
       */
-    def addAplha(current: RandomVariable[Map[String, DenseMatrix[Real]]], i: Int): RandomVariable[Map[String, DenseMatrix[Real]]] = {
+    def addAplha(current: RandomVariable[Map[String, Map[(Int, Int), Real]]], i: Int): RandomVariable[Map[String, Map[(Int, Int), Real]]] = {
       for {
         cur<- current
+        try1 = cur("eff1")(0,i)
         gm_1 <- Normal(0, cur("sdE1")(0,0)).param
-      } yield Map("mu" -> cur("mu"), "eff1" -> (cur("eff1")(0,i)=gm_1), "eff2" -> cur("eff2"), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
+      } yield Map("mu" -> cur("mu"), "eff1" -> (cur("eff1")+= ((0,i) -> gm_1)), "eff2" -> cur("eff2"), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
     }
 
     /**
       * Add the main effects of beta
       */
-    def addBeta(current: RandomVariable[Map[String, List[Real]]], j: Int): RandomVariable[Map[String, List[Real]]] = {
+    def addBeta(current: RandomVariable[Map[String, Map[(Int, Int), Real]]], j: Int): RandomVariable[Map[String, Map[(Int, Int), Real]]] = {
       for {
         cur <- current
         gm_2 <- Normal(0, cur("sdE2")).param
-      } yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1") , "eff2" -> (gm_2::cur("eff2")), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
+      } yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1") , "eff2" -> (cur("eff2")+= ((0,j) -> gm_2)), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
     }
 
     /**
       * Fit to the data per group
       */
-    def addGroup(current: RandomVariable[Map[String, Vector[Vector[Real]]]], i: Int, j: Int, dataMap: Map[(Int, Int), List[Double]]): RandomVariable[Map[String, Vector[Vector[Real]]]] = {
+    def addGroup(current: RandomVariable[Map[String, Map[(Int, Int), Real]]], i: Int, j: Int, dataMap: Map[(Int, Int), List[Double]]): RandomVariable[Map[String, Map[(Int, Int), Real]]] = {
       for {
         cur <- current
-        gm = cur("mu")(0)(0) + cur("eff1")(0)(i) + cur("eff2")(0)(j) + cur("effg")(i)(j)
-        _ <- Normal(gm, cur("sigD")(0)(0)).fit(dataMap(i, j))
+        gm = cur("mu")(0,0) + cur("eff1")(0, i) + cur("eff2")(0, j) + cur("effg")(i,j)
+        _ <- Normal(gm, cur("sigD")(0,0)).fit(dataMap(i, j))
       } yield cur
     }
 
     /**
       * Add all the main effects for each group. Version: Recursion
       */
-    @tailrec def addAllEffRecursive(alphabeta: RandomVariable[Map[String, Vector[Vector[Real]]]], dataMap: Map[(Int, Int), List[Double]], i: Int, j: Int): RandomVariable[Map[String, Vector[Vector[Real]]]] = {
+    @tailrec def addAllEffRecursive(alphabeta: RandomVariable[Map[String, Map[(Int, Int), Real]]], dataMap: Map[(Int, Int), List[Double]], i: Int, j: Int): RandomVariable[Map[String, Map[(Int, Int), Real]]] = {
 
       val temp = addGroup(alphabeta, i, j, dataMap)
 
@@ -124,9 +127,9 @@ object MapAnova2wayWithInters_vComp {
     /**
       * Add all the main effects for each group. Version: Loop
       */
-    def addAllEffLoop(alphabeta: RandomVariable[Map[String, Vector[Vector[Real]]]], dataMap: Map[(Int, Int), List[Double] ]) : RandomVariable[Map[String, Vector[Vector[Real]]]] = {
+    def addAllEffLoop(alphabeta: RandomVariable[Map[String, Map[(Int, Int), Real]]], dataMap: Map[(Int, Int), List[Double] ]) : RandomVariable[Map[String, Map[(Int, Int), Real]]] = {
 
-      var tempAlphaBeta: RandomVariable[Map[String, Vector[Vector[Real]]]] = alphabeta
+      var tempAlphaBeta: RandomVariable[Map[String, Map[(Int, Int), Real]]] = alphabeta
 
       for (i <- 0 until n1) {
         for (j <- 0 until n2) {
@@ -141,7 +144,7 @@ object MapAnova2wayWithInters_vComp {
       * We would like something like: val result = (0 until n1)(0 until n2).foldLeft(alphabeta)(addGroup(_,(_,_)))
       * But we can't use foldLeft with double loop so we use an extra function either with loop or recursively
       */
-    def fullModel(alphabeta: RandomVariable[Map[String, Vector[Vector[Real]]]], dataMap: Map[(Int, Int), List[Double]]) : RandomVariable[Map[String, Vector[Vector[Real]]]] = {
+    def fullModel(alphabeta: RandomVariable[Map[String, Map[(Int, Int), Real]]], dataMap: Map[(Int, Int), List[Double]]) : RandomVariable[Map[String, Map[(Int, Int), Real]]] = {
       //addAllEffLoop(alphabeta, dataMap)
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
