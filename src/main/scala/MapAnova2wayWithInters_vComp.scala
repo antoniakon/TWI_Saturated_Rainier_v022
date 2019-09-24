@@ -5,6 +5,7 @@ import com.stripe.rainier.core.{Normal, _}
 import com.stripe.rainier.sampler._
 import scala.annotation.tailrec
 import scala.math.sqrt
+import scala.collection.mutable.ArrayBuffer
 
 object MapAnova2wayWithInters_vComp {
 
@@ -18,7 +19,7 @@ object MapAnova2wayWithInters_vComp {
     * Process data read from input file
     */
   def dataProcessing(): (Map[(Int,Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/try/inter.csv"))
+    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withInteractions/simulInter040619.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -43,37 +44,55 @@ object MapAnova2wayWithInters_vComp {
     implicit val rng = rngS
     val n = dataMap.size //No of groups
 
+    // Implementation of sqrt for Real
+    def sqrtF(x: Real): Real = {
+      val lx = (Real(0.5) * x.log).exp
+      lx
+    }
+
     val prior = for {
       mu <- Normal(0, 100).param //For jags we had: mu~dnorm(0,0.0001) and jags uses precision, so here we use sd = sqrt(1/tau)
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param //RandomVariable[Real]
       tauE1 <- tauE1RV //Real
-      sdE1LD = tauE1RV.sample(1) //List[Double]
-      sdE1= Real(sqrt(1/sdE1LD(0))) //Real. Without Real() it is Double
+      sdE1= sqrtF(Real(1.0)/tauE1) //Real. Without Real() it is Double
 
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
-      sdE2LD = tauE2RV.sample(1)
-      sdE2= Real(sqrt(1/sdE2LD(0)))
+      sdE2= sqrtF(Real(1.0)/tauE2)
 
       // Sample tau, estimate sd to be used in sampling from Normal the interaction effects
       tauGRV = Gamma(1, 10000).param
       tauG <- tauGRV
-      sdGLD = tauGRV.sample(1)
-      sdG= Real(sqrt(1/sdGLD(0)))
+      sdG= sqrtF(Real(1.0)/tauG)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
-      sdDLD = tauDRV.sample(1)
-      sdDR= Real(sqrt(1/sdDLD(0)))
+      sdDR= sqrtF(Real(1.0)/tauD)
 
-      // Save all the results to matrices, even if only one element e.g. mu, in order to be able to process and print all the main and interaction effects at the end. Because current has to have one common structure for all the unknown variables (current: RandomVariable[Map[String, Vector[Vector[Real]]]]).
-      eff11= Vector.fill(1){Vector.fill(n1) { Normal(0, sdE1).param.value }} //Fill a matrix (1 x n1) for the main effects of the 1st variable (n1 levels) with samples from Normal(0, sdE1)
-      eff22 = Vector.fill(1){Vector.fill(n2) { Normal(0, sdE2).param.value }} //Fill a matrix (1 x n2) for the main effects of the 2nd variable (n2 levels) with samples from Normal(0, sdE2)
-      effinter = Vector.fill(n1){Vector.fill(n2) { Normal(0, sdG).param.value}} //Fill a matrix (n1 x n2) for the interaction effects with samples from Normal(0, sdG)
-    } yield Map("mu" -> Vector.fill(1,1)(mu), "eff1" -> eff11, "eff2" -> eff22, "effg" -> effinter, "sigE1" -> Vector.fill(1,1)(sdE1), "sigE2" -> Vector.fill(1,1)(sdE2), "sigInter" ->Vector.fill(1,1)(sdG),  "sigD" -> Vector.fill(1,1)(sdDR))
+    } yield Map("mu" -> DenseMatrix((mu)), "eff1" -> DenseMatrix.zeros[Real](1,n1), "eff2" -> DenseMatrix.zeros[Real](1,n2), "effg" -> DenseMatrix.zeros[Real](n1,n2), "sigE1" -> DenseMatrix((sdE1)), "sigE2" -> DenseMatrix((sdE2)), "sigInter" ->DenseMatrix((sdG)),  "sigD" -> DenseMatrix((sdDR)))
+
+    /**
+      * Add the main effects of alpha
+      */
+    def addAplha(current: RandomVariable[Map[String, DenseMatrix[Real]]], i: Int): RandomVariable[Map[String, DenseMatrix[Real]]] = {
+      for {
+        cur<- current
+        gm_1 <- Normal(0, cur("sdE1")(0,0)).param
+      } yield Map("mu" -> cur("mu"), "eff1" -> (cur("eff1")(0,i)=gm_1), "eff2" -> cur("eff2"), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
+    }
+
+    /**
+      * Add the main effects of beta
+      */
+    def addBeta(current: RandomVariable[Map[String, List[Real]]], j: Int): RandomVariable[Map[String, List[Real]]] = {
+      for {
+        cur <- current
+        gm_2 <- Normal(0, cur("sdE2")).param
+      } yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1") , "eff2" -> (gm_2::cur("eff2")), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
+    }
 
     /**
       * Fit to the data per group
@@ -127,7 +146,12 @@ object MapAnova2wayWithInters_vComp {
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
 
-    val fullModelRes = fullModel(prior, dataMap)
+    val alpha = (0 until n1).foldLeft(prior)(addAplha(_, _))
+
+    val alphabeta = (0 until n2).foldLeft(alpha)(addBeta(_, _))
+
+    val fullModelRes = fullModel(alphabeta, dataMap)
+
 
     val model = for {
       mod <- fullModelRes
@@ -142,8 +166,8 @@ object MapAnova2wayWithInters_vComp {
 
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
-    val thin = 10
-    val out = model.sample(HMC(5), 10000, 10 * thin, thin)
+    val thin = 100
+    val out = model.sample(HMC(200), 1000, 10000 * thin, thin)
     println("Sampling finished.")
 
     //Print the results
@@ -210,10 +234,10 @@ object MapAnova2wayWithInters_vComp {
       val sigDdv = new DenseVector[Double](sigD.toArray)
       val sigInterdv = new DenseVector[Double](sigInter.toArray)
       val mudv = new DenseVector[Double](mu.toArray)
-      val sigmasMu = DenseMatrix(sigE1dv, sigE2dv)
+      val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigInterdv, sigDdv, mudv)
 
-      val results = DenseMatrix.horzcat(effects1Mat, effects2Mat,  sigmasMu.t)
-      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/FullResultsRainierWithInter.csv")
+      val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, interEffMat, sigmasMu.t)
+      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withInteractions/FullResultsRainierWithInter170919HMC50100k.csv")
       breeze.linalg.csvwrite(outputFile, results, separator = ',')
     }
   }
