@@ -1,10 +1,29 @@
 import java.io.File
+
 import breeze.linalg._
+import breeze.numerics.sqrt
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
+
 import scala.annotation.tailrec
 import com.stripe.rainier.ir
+import com.cibo.evilplot.geometry.Extent
+import com.cibo.evilplot.plot.LinePlot
+import com.stripe.rainier.plot.EvilTracePlot._
+import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
+import com.cibo.evilplot.numeric.Point
+import com.cibo.evilplot._
+import com.cibo.evilplot.plot._
+import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
+import com.cibo.evilplot.numeric.Point
+import com.cibo.evilplot.plot._
+import com.cibo.evilplot.colors._
+import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
+import com.cibo.evilplot.numeric.Point
+import java.awt.Image.SCALE_SMOOTH
+
+
 
 
 object MapAnova2WithoutInters_vComp {
@@ -19,7 +38,7 @@ object MapAnova2WithoutInters_vComp {
     * Process data read from input file
     */
   def dataProcessing(): (Map[(Int,Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/300519/withoutInteractions/simulNoInter300519.csv"))
+    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withoutInteractions/simulNoInter040619.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -45,7 +64,8 @@ object MapAnova2WithoutInters_vComp {
     */
   def mainEffects(dataMap: Map[(Int, Int), List[Double]], rngS: ScalaRNG, n1: Int, n2: Int): Unit = {
 
-    def sqrtF(x: Real): Real = {
+    // Implementation of sqrt for Real
+    def sqrtR(x: Real): Real = {
       val lx = (Real(0.5) * x.log).exp
       lx
     }
@@ -59,23 +79,40 @@ object MapAnova2WithoutInters_vComp {
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param
       tauE1 <- tauE1RV
-      sdE1= sqrtF((Real(1))/tauE1)
+      sdE1= sqrtR(Real(1.0)/tauE1)
 
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
-      sdE2= sqrtF((Real(1))/tauE2)
+      sdE2LD = tauE2RV.sample(1)
+      sdE2= sqrtR(Real(1.0)/tauE2)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
-      sdDR= sqrtF((Real(1))/tauD)
+      sdDR= sqrtR(Real(1.0)/tauD)
 
-      // Sample the effects
-      eff11= List.fill(n1) { Normal(0, sdE1).param.value } //Normal(0, sdE1).param.value Returns a real
-      eff22 = List.fill(n2) { Normal(0, sdE2).param.value }
-    } yield Map("mu" -> List(mu), "eff1" -> eff11, "eff2" -> eff22, "tauE1" -> List(sdE1), "tauE2" -> List(sdE2), "sdD" -> List(sdDR))
+    } yield Map("mu" -> List(mu), "eff1" -> List[Real]() , "eff2" -> List[Real](), "sdE1" -> List(sdE1), "sdE2" -> List(sdE2), "sdD" -> List(sdDR))
 
+    /**
+      * Add the main effects of alpha
+      */
+    def addAplha(current: RandomVariable[Map[String, List[Real]]], i: Int): RandomVariable[Map[String, List[Real]]] = {
+      for {
+        cur<- current
+        gm_1 <- Normal(0, cur("sdE1")(0)).param
+      } yield Map("mu" -> cur("mu"), "eff1" -> (gm_1::cur("eff1")) , "eff2" -> cur("eff2"), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdD"))
+    }
+
+    /**
+      * Add the main effects of beta
+      */
+    def addBeta(current: RandomVariable[Map[String, List[Real]]], j: Int): RandomVariable[Map[String, List[Real]]] = {
+      for {
+        cur <- current
+        gm_2 <- Normal(0, cur("sdE2")(0)).param
+      } yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1") , "eff2" -> (gm_2::cur("eff2")), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdD"))
+    }
     /**
       * Fit to the data per group
       */
@@ -126,22 +163,25 @@ object MapAnova2WithoutInters_vComp {
       //addAllEffLoop(alphabeta, dataMap)
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
+    val alpha = (0 until n1).foldLeft(prior)(addAplha(_, _))
 
-    val fullModelRes = fullModel(prior, dataMap)
+    val alphabeta = (0 until n2).foldLeft(alpha)(addBeta(_, _))
+
+    val fullModelRes = fullModel(alphabeta, dataMap)
 
     val model = for {
       mod <- fullModelRes
     } yield Map("mu" -> mod("mu"),
       "eff1" -> mod("eff1"),
       "eff2" -> mod("eff2"),
-      "tauE1" -> mod("tauE1"),
-      "tauE2" -> mod("tauE2"),
+      "sdE1" -> mod("sdE1"),
+      "sdE2" -> mod("sdE2"),
       "sdD" -> mod("sdD"))
 
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 100
-    val out = model.sample(HMC(50), 10000, 10000 * thin, thin)
+    val out = model.sample(HMC(200), 1000, 10000 * thin, thin)
     println("Sampling finished.")
 
     def printResults(out: List[Map[String, List[Double]]]) = {
@@ -158,8 +198,8 @@ object MapAnova2WithoutInters_vComp {
       val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
       val effects1 = flattenEffects("eff1", grouped)
       val effects2 = flattenEffects("eff2", grouped)
-      val sigE1 = flattenSigMu("tauE1", grouped)
-      val sigE2 = flattenSigMu("tauE2", grouped)
+      val sigE1 = flattenSigMu("sdE1", grouped)
+      val sigE2 = flattenSigMu("sdE2", grouped)
       val sigD = flattenSigMu("sdD", grouped)
       val mu = flattenSigMu("mu", grouped)
 
@@ -171,10 +211,18 @@ object MapAnova2WithoutInters_vComp {
       val sigDdv = new DenseVector[Double](sigD.toArray)
       val mudv = new DenseVector[Double](mu.toArray)
       val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigDdv, mudv)
-      println(sigmasMu.rows)
       val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, sigmasMu.t)
-      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/300519/withoutInteractions/FullResultsRainierWithoutInterHMC50.csv")
-      breeze.linalg.csvwrite(outputFile, results, separator = ',')
+      //val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withoutInteractions/FullResultsRainierWithoutInterHMC50Old.csv")
+      //breeze.linalg.csvwrite(outputFile, results, separator = ',')
+
+      val mudata = Seq.tabulate(mudv.length) { i =>
+        Point(i.toDouble, mudv(i))
+      }
+
+
+      val plot = LinePlot(mudata).
+        xAxis().yAxis().frame().
+        xLabel("x").yLabel("y").render()
 
 
       // Find the averages
