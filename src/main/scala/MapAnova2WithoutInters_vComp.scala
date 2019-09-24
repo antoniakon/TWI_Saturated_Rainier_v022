@@ -23,9 +23,6 @@ import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
 import com.cibo.evilplot.numeric.Point
 import java.awt.Image.SCALE_SMOOTH
 
-
-
-
 object MapAnova2WithoutInters_vComp {
 
   def main(args: Array[String]): Unit = {
@@ -212,8 +209,9 @@ object MapAnova2WithoutInters_vComp {
       val mudv = new DenseVector[Double](mu.toArray)
       val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigDdv, mudv)
       val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, sigmasMu.t)
-      //val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withoutInteractions/FullResultsRainierWithoutInterHMC50Old.csv")
-      //breeze.linalg.csvwrite(outputFile, results, separator = ',')
+
+      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withoutInteractions/FullResultsRainierWithoutInterHMC200New.csv")
+      breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
       val mudata = Seq.tabulate(mudv.length) { i =>
         Point(i.toDouble, mudv(i))
