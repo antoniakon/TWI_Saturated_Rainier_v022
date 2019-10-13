@@ -52,7 +52,8 @@ object MapAnova2wayWithInters_vComp {
       val lx = (Real(0.5) * x.log).exp
       lx
     }
-    def updatePrior(mu: Real, sdE1: Real, sdE2: Real, sdG: Real, sdDR: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] ={
+
+    def updatePrior(mu: Real, sdE1: Real, sdE2: Real, sdG: Real, sdDR: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
       var myMap = scala.collection.mutable.Map[String, Map[(Int, Int), Real]]()
       //"mu" -> Map((0, 0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0, 0) -> sdE1), "sigE2" -> Map((0, 0) -> sdE2), "sigInter" -> Map((0, 0) -> sdG)
       myMap("mu") = Map((0, 0) -> mu)
@@ -91,10 +92,11 @@ object MapAnova2wayWithInters_vComp {
       //scala.collection.mutable.Map("mu" -> Map((0, 0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0, 0) -> sdE1), "sigE2" -> Map((0, 0) -> sdE2), "sigInter" -> Map((0, 0) -> sdG), "sigD" -> Map((0, 0) -> sdDR))
     } yield updatePrior(mu, sdE1, sdE2, sdG, sdDR)
 
-    def updateMap(myMap: scala.collection.mutable.Map[String, Map[(Int, Int), Real]], index: Int, key:String, addedValue: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] ={
-      myMap(key) += ((0,index)-> addedValue)
+    def updateMap(myMap: scala.collection.mutable.Map[String, Map[(Int, Int), Real]], index: Int, key: String, addedValue: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
+      myMap(key) += ((0, index) -> addedValue)
       myMap
     }
+
     /**
       * Add the main effects of alpha
       */
@@ -104,7 +106,7 @@ object MapAnova2wayWithInters_vComp {
         cur <- current
         gm_1 <- Normal(0, cur("sigE1")(0, 0)).param
         //yield scala.collection.mutable.Map("mu" -> cur("mu"), "eff1" -> (cur("eff1") += ((0, i) -> gm_1)), "eff2" -> cur("eff2"), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
-      } yield updateMap(cur, i, "eff1", gm_1 )
+      } yield updateMap(cur, i, "eff1", gm_1)
     }
 
     /**
@@ -115,15 +117,15 @@ object MapAnova2wayWithInters_vComp {
         cur <- current
         gm_2 <- Normal(0, cur("sigE2")(0, 0)).param
         //yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1"), "eff2" -> (cur("eff2") += ((0, j) -> gm_2)), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
-      } yield updateMap(cur, j, "eff2", gm_2 )
+      } yield updateMap(cur, j, "eff2", gm_2)
     }
 
-    def updateMapGammaEff(myMap: scala.collection.mutable.Map[String, Map[(Int, Int), Real]], i: Int, j: Int, key:String, addedValue: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] ={
-      myMap(key) += ((i,j)-> addedValue)
+    def updateMapGammaEff(myMap: scala.collection.mutable.Map[String, Map[(Int, Int), Real]], i: Int, j: Int, key: String, addedValue: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
+      myMap(key) += ((i, j) -> addedValue)
       myMap
     }
 
-    def addGammaEff(current: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]], i:Int, j: Int): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
+    def addGammaEff(current: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]], i: Int, j: Int): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
       for {
         cur <- current
         gm_inter <- Normal(0, cur("sigInter")(0, 0)).param
@@ -199,8 +201,8 @@ object MapAnova2wayWithInters_vComp {
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
 
-    def unpPrior(rv: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]]): RandomVariable[Unit] ={
-      for{
+    def unpPrior(rv: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]]): RandomVariable[Unit] = {
+      for {
         pr <- prior
       } yield println(pr)
     }
@@ -232,94 +234,111 @@ object MapAnova2wayWithInters_vComp {
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 10
-    val out = model.sample(HMC(50), 100, 10000 * thin, thin)
+    val out = model.sample(HMC(150), 1000, 10000 * thin, thin)
     println("Sampling finished.")
 
-    //println(out)
-//    //Print the results
-    val dv = DenseVector[Double]()
-    val outList1 = out.map { v =>
-      v.filterKeys(k => k=="eff1")}
-//    val outList1 = out.map { v =>
-//      v.filterKeys(k => k=="eff1").map{case (k, v) => (k, v.map { case (ktup, vDouble) => dv(ktup._2) = vDouble }) }}
-      //val outList = out.map{ v=> v.map { case (k,v) => (k, v.toList.map(l => l.toList))}}
-      //println(outList1)
-    println("------------------------- eff2 --------------------------")
-    val outList2 = out.map { v =>
-      v.filterKeys(k => k=="eff2")}.map{ v=> v.map { case (k,v) => (k, v.toList)}}
-    println(outList2)
-    println("------------------------- effg --------------------------")
-    val outList3 = out.map { v =>
-      v.filterKeys(k => k=="effg")}
-    //println(outList3)
-      //printResults(outList1)
 
-      /**
-        * Takes the result of the sampling and processes and prints the results
-        */
-      def printResults(out: List[Map[String, List[List[Double]]]]) = {
+    println("----------------mu ------------------")
+    val outListmu = out
+      .flatMap{ eff1ListItem => eff1ListItem("mu") }
+      .groupBy(_._1)
+      .map { case (k, v) => k -> v.map(_._2) }
 
-        def flattenSigMu(vars: String, grouped: Map[String, List[List[List[Double]]]]): List[Double] = {
-          grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.flatten.toList
-        }
+    println(outListmu.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) })
 
-        def flattenEffects(vars: String, grouped: Map[String, List[List[List[Double]]]]): List[List[Double]] = {
-          grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.toList
-        }
 
-        //Separate the parameters
-        val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-        val effects1 = flattenEffects("eff1", grouped)
-        val effects2 = flattenEffects("eff2", grouped)
-        val sigE1 = flattenSigMu("sigE1", grouped)
-        val sigE2 = flattenSigMu("sigE2", grouped)
-        val sigD = flattenSigMu("sigD", grouped)
-        val sigInter = flattenSigMu("sigInter", grouped)
-        val mu = flattenSigMu("mu", grouped)
+    println("----------------eff1 ------------------")
+    val outList1 = out.flatMap { eff1ListItem => eff1ListItem("eff1") }
+      .groupBy(_._1)
+      .map { case (k, v) => k -> v.map(_._2) }
 
-        // Find the averages
-        def mean(list: List[Double]): Double =
-          if (list.isEmpty) 0 else list.sum / list.size
+      println(outList1.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length)})
+    println("----------------eff2 ------------------")
+    val outList2 = out
+      .flatMap{ eff1ListItem => eff1ListItem("eff2") }
+      .groupBy(_._1)
+      .map { case (k, v) => k -> v.map(_._2) }
 
-        val sigE1A = mean(sigE1)
-        val sigE2A = mean(sigE2)
-        val sigDA = mean(sigD)
-        val sigInterA = mean(sigInter)
-        val muA = mean(mu)
-        val eff1A = effects1.transpose.map(x => x.sum / x.size.toDouble)
-        val eff2A = effects2.transpose.map(x => x.sum / x.size.toDouble)
+    println(outList2.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) })
 
-        //Interaction coefficients
-        val effectsInter = grouped.filter((t) => t._1 == "effg").map { case (k, v) => v }.flatten
-        val effsum = effectsInter.reduce((a, b) => a.zip(b).map { case (v1, v2) => v1.zip(v2).map { case (x, y) => (x + y) } }).map(z => z.map(z1 => z1 / effectsInter.size))
+    println("----------------effg ------------------")
+    val outList3 = out
+      .flatMap{ eff1ListItem => eff1ListItem("effg") }
+      .groupBy(_._1)
+      .map { case (k, v) => k -> v.map(_._2) }
 
-        val interEff = effectsInter.map(l1 => l1.reduce((a, b) => a ++ b)).toList //List[List[Double]] the inner lists represent the iterations. This will have to be stored in a DenseMatrix
+    println(outList3.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) })
 
-        //Print the mean
-        println(s"sigE1: ", sigE1A)
-        println(s"sigE2: ", sigE2A)
-        println(s"sigD: ", sigDA)
-        println(s"sigInter: ", sigInterA)
-        println(s"mu: ", muA)
-        println(s"effects1: ", eff1A)
-        println(s"effects2: ", eff2A)
-        println(s"effects: ", effsum)
 
-        //Save results to csv
-        val effects1Mat = DenseMatrix(effects1.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
-        val effects2Mat = DenseMatrix(effects2.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
-        val interEffMat = DenseMatrix(interEff.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
-        val sigE1dv = new DenseVector[Double](sigE1.toArray)
-        val sigE2dv = new DenseVector[Double](sigE2.toArray)
-        val sigDdv = new DenseVector[Double](sigD.toArray)
-        val sigInterdv = new DenseVector[Double](sigInter.toArray)
-        val mudv = new DenseVector[Double](mu.toArray)
-        val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigInterdv, sigDdv, mudv)
 
-        val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, interEffMat, sigmasMu.t)
-        val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withInteractions/FullResultsRainierWithInter170919HMC50100k.csv")
-        breeze.linalg.csvwrite(outputFile, results, separator = ',')
-      }
+  }
+
+
+  /**
+    * Takes the result of the sampling and processes and prints the results
+    */
+  def printResults(out: List[Map[String, List[List[Double]]]]) = {
+
+    def flattenSigMu(vars: String, grouped: Map[String, List[List[List[Double]]]]): List[Double] = {
+      grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.flatten.toList
     }
 
+    def flattenEffects(vars: String, grouped: Map[String, List[List[List[Double]]]]): List[List[Double]] = {
+      grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.toList
+    }
+
+    //Separate the parameters
+    val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
+    val effects1 = flattenEffects("eff1", grouped)
+    val effects2 = flattenEffects("eff2", grouped)
+    val sigE1 = flattenSigMu("sigE1", grouped)
+    val sigE2 = flattenSigMu("sigE2", grouped)
+    val sigD = flattenSigMu("sigD", grouped)
+    val sigInter = flattenSigMu("sigInter", grouped)
+    val mu = flattenSigMu("mu", grouped)
+
+    // Find the averages
+    def mean(list: List[Double]): Double =
+      if (list.isEmpty) 0 else list.sum / list.size
+
+    val sigE1A = mean(sigE1)
+    val sigE2A = mean(sigE2)
+    val sigDA = mean(sigD)
+    val sigInterA = mean(sigInter)
+    val muA = mean(mu)
+    val eff1A = effects1.transpose.map(x => x.sum / x.size.toDouble)
+    val eff2A = effects2.transpose.map(x => x.sum / x.size.toDouble)
+
+    //Interaction coefficients
+    val effectsInter = grouped.filter((t) => t._1 == "effg").map { case (k, v) => v }.flatten
+    val effsum = effectsInter.reduce((a, b) => a.zip(b).map { case (v1, v2) => v1.zip(v2).map { case (x, y) => (x + y) } }).map(z => z.map(z1 => z1 / effectsInter.size))
+
+    val interEff = effectsInter.map(l1 => l1.reduce((a, b) => a ++ b)).toList //List[List[Double]] the inner lists represent the iterations. This will have to be stored in a DenseMatrix
+
+    //Print the mean
+    println(s"sigE1: ", sigE1A)
+    println(s"sigE2: ", sigE2A)
+    println(s"sigD: ", sigDA)
+    println(s"sigInter: ", sigInterA)
+    println(s"mu: ", muA)
+    println(s"effects1: ", eff1A)
+    println(s"effects2: ", eff2A)
+    println(s"effects: ", effsum)
+
+    //Save results to csv
+    val effects1Mat = DenseMatrix(effects1.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
+    val effects2Mat = DenseMatrix(effects2.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
+    val interEffMat = DenseMatrix(interEff.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
+    val sigE1dv = new DenseVector[Double](sigE1.toArray)
+    val sigE2dv = new DenseVector[Double](sigE2.toArray)
+    val sigDdv = new DenseVector[Double](sigD.toArray)
+    val sigInterdv = new DenseVector[Double](sigInter.toArray)
+    val mudv = new DenseVector[Double](mu.toArray)
+    val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigInterdv, sigDdv, mudv)
+
+    val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, interEffMat, sigmasMu.t)
+    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withInteractions/FullResultsRainierWithInter170919HMC50100k.csv")
+    breeze.linalg.csvwrite(outputFile, results, separator = ',')
+
+  }
 }
