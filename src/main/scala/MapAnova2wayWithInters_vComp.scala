@@ -6,9 +6,6 @@ import com.stripe.rainier.core.{Normal, RandomVariable, _}
 import com.stripe.rainier.sampler._
 import scala.collection.immutable.ListMap
 import scala.annotation.tailrec
-import scala.math.sqrt
-import scala.collection.mutable.ArrayBuffer
-
 
 object MapAnova2wayWithInters_vComp {
 
@@ -68,8 +65,10 @@ object MapAnova2wayWithInters_vComp {
       myMap
     }
 
+    //Define the prior
+    //For jags we had: mu~dnorm(0,0.0001) and jags uses precision, so here we use sd = sqrt(1/tau)
     val prior = for {
-      mu <- Normal(0, 100).param //For jags we had: mu~dnorm(0,0.0001) and jags uses precision, so here we use sd = sqrt(1/tau)
+      mu <- Normal(0, 100).param
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param //RandomVariable[Real]
       tauE1 <- tauE1RV //Real
@@ -92,6 +91,9 @@ object MapAnova2wayWithInters_vComp {
       //scala.collection.mutable.Map("mu" -> Map((0, 0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0, 0) -> sdE1), "sigE2" -> Map((0, 0) -> sdE2), "sigInter" -> Map((0, 0) -> sdG), "sigD" -> Map((0, 0) -> sdDR))
     } yield updatePrior(mu, sdE1, sdE2, sdG, sdDR)
 
+    /**
+      * Helper function to update the values for the main effects of the Map
+      */
     def updateMap(myMap: scala.collection.mutable.Map[String, Map[(Int, Int), Real]], index: Int, key: String, addedValue: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
       myMap(key) += ((0, index) -> addedValue)
       myMap
@@ -105,7 +107,6 @@ object MapAnova2wayWithInters_vComp {
       for {
         cur <- current
         gm_1 <- Normal(0, cur("sigE1")(0, 0)).param
-        //yield scala.collection.mutable.Map("mu" -> cur("mu"), "eff1" -> (cur("eff1") += ((0, i) -> gm_1)), "eff2" -> cur("eff2"), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
       } yield updateMap(cur, i, "eff1", gm_1)
     }
 
@@ -116,15 +117,20 @@ object MapAnova2wayWithInters_vComp {
       for {
         cur <- current
         gm_2 <- Normal(0, cur("sigE2")(0, 0)).param
-        //yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1"), "eff2" -> (cur("eff2") += ((0, j) -> gm_2)), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
       } yield updateMap(cur, j, "eff2", gm_2)
     }
 
+    /**
+      * Helper function to update the values for the interaction effects of the Map
+      */
     def updateMapGammaEff(myMap: scala.collection.mutable.Map[String, Map[(Int, Int), Real]], i: Int, j: Int, key: String, addedValue: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
       myMap(key) += ((i, j) -> addedValue)
       myMap
     }
 
+    /**
+      * Add the interaction effects of beta
+      */
     def addGammaEff(current: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]], i: Int, j: Int): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
       for {
         cur <- current
@@ -137,7 +143,6 @@ object MapAnova2wayWithInters_vComp {
       * Add the interaction effects
       */
     def addGamma(current: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]]): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
-
       var tempAlphaBeta: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = current
 
       for (i <- 0 until n1) {
@@ -147,7 +152,6 @@ object MapAnova2wayWithInters_vComp {
       }
       tempAlphaBeta
     }
-
 
     /**
       * Fit to the data per group
@@ -197,28 +201,14 @@ object MapAnova2wayWithInters_vComp {
       * But we can't use foldLeft with double loop so we use an extra function either with loop or recursively
       */
     def fullModel(alphabeta: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]], dataMap: Map[(Int, Int), List[Double]]): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
-      //addAllEffLoop(alphabeta, dataMap)
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
 
-    def unpPrior(rv: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]]): RandomVariable[Unit] = {
-      for {
-        pr <- prior
-      } yield println(pr)
-    }
-
-    unpPrior(prior)
-
+    // Add the effects sequentially
     val alpha = (0 until n1).foldLeft(prior)(addAplha(_, _))
-    println("alpha")
-    unpPrior(alpha)
-
     val alphabeta = (0 until n2).foldLeft(alpha)(addBeta(_, _))
-
     val alphabetagamma = addGamma(alphabeta)
-
     val fullModelRes = fullModel(alphabetagamma, dataMap)
-
 
     val model = for {
       mod <- fullModelRes
