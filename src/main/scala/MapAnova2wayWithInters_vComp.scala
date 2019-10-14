@@ -226,208 +226,70 @@ object MapAnova2wayWithInters_vComp {
     val thin = 10
     val out = model.sample(HMC(300), 1000, 10000 * thin, thin)
     println("Sampling finished.")
+    printResults(out)
 
+  }
 
+  /**
+    * Takes the result of the sampling and processes and prints the results
+    */
+  def printResults(out: scala.List[Map[String, Map[(Int, Int), Double]]]) = {
+
+    def variableDM(varName: String):  DenseMatrix[Double] ={
+
+      // Separate the data for the specific variable of interest
+      val sepVariableData = out
+        .flatMap{ eff1ListItem => eff1ListItem(varName) }
+        .groupBy(_._1)
+        .map { case (k, v) => k -> v.map(_._2) }
+
+      // If the map contains more than one keys, they need to be sorted out to express the effects sequentially.
+      // This is necessary for comparing the results from Scala and R in R
+      val tempData= {
+        varName match {
+          case "mu" | "tau" | "sigInter" | "sigE1" | "sigE2" | "sigD" => sepVariableData
+          case "eff1" | "eff2" => ListMap(sepVariableData.toSeq.sortBy(_._1._2):_*)
+          case "effg" => ListMap(sepVariableData.toSeq.sortBy(_._1._2).sortBy(_._1._1):_*)
+        }
+      }
+      val tempList = tempData.map{case (k,listDb) => (listDb)}.toList
+      DenseMatrix(tempList.map(_.toArray): _*).t
+    }
     println("----------------mu ------------------")
-    val outListmu = out
-      .flatMap{ eff1ListItem => eff1ListItem("mu") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
-
-    val muRes = outListmu.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length)}
-    println(muRes)
-
-    val mu = outListmu.map{case (k,listDb) => (listDb)}.toList
-    val muMat = DenseMatrix(mu.map(_.toArray): _*).t
-    println(muMat.rows)
-    println(muMat.cols)
+    val muMat = variableDM("mu")
+    println(mean(muMat(::,*)))
 
     println("----------------eff1 ------------------")
-    val outListEff1 = out.flatMap { eff1ListItem => eff1ListItem("eff1") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
+    val effects1Mat = variableDM("eff1")
+    println(mean(effects1Mat(::,*)))
 
-    val eff1Res = outListEff1.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length)}
-    println(eff1Res)
-
-    val sortedListEff1 = ListMap(outListEff1.toSeq.sortBy(_._1._2):_*)
-    val effects1 = sortedListEff1.map{case (k,listDb) => (listDb)}.toList
-    println(effects1)
-    val effects1Mat = DenseMatrix(effects1.map(_.toArray): _*).t
-    // Mean from DenseMatrix
-    // println(mean(effects1Mat(::,*)))
-
-    println(effects1Mat.rows)
-    println(effects1Mat.cols)
     println("----------------eff2 ------------------")
-    val outListEff2 = out
-      .flatMap{ eff1ListItem => eff1ListItem("eff2") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
+    val effects2Mat = variableDM("eff2")
+    println(mean(effects2Mat(::,*)))
 
-    val eff2Res = outListEff2.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) }
-    println(eff2Res)
-
-    val sortedListEff2 = ListMap(outListEff2.toSeq.sortBy(_._1._2):_*)
-    val effects2 = sortedListEff2.map{case (k,listDb) => (listDb)}.toList
-    println(effects2)
-    val effects2Mat = DenseMatrix(effects2.map(_.toArray): _*).t
-
-    println(effects2Mat.rows)
-    println(effects2Mat.cols)
     println("----------------effg ------------------")
-    val outListEffInter = out
-      .flatMap{ eff1ListItem => eff1ListItem("effg") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
-
-    val effInterRes = outListEffInter.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) }
-    println(effInterRes)
-
-    val sortedListEffg = ListMap(outListEffInter.toSeq.sortBy(_._1._2).sortBy(_._1._1):_*)
-    println("sortedListEffg")
-    println(sortedListEffg)
-    val effg = sortedListEffg.map{case (k,listDb) => (listDb)}.toList
-    val effgMat = DenseMatrix(effg.map(_.toArray): _*).t
-
-    println(effgMat.rows)
-    println(effgMat.cols)
+    val effgMat = variableDM("effg")
+    println(mean(effgMat(::,*)))
 
     println("----------------sigInter ------------------")
-    val outListsigInter = out
-      .flatMap{ eff1ListItem => eff1ListItem("sigInter") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
-
-    val sigInterRes = outListsigInter.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) }
-    println(sigInterRes)
-
-    val sigInter = outListsigInter.map{case (k,listDb) => (listDb)}.toList
-    val sigInterMat = DenseMatrix(sigInter.map(_.toArray): _*).t
-
-    println(sigInterMat.rows)
-    println(sigInterMat.cols)
+    val sigInterMat = variableDM("sigInter")
+    println(mean(sigInterMat(::,*)))
 
     println("----------------sigΕ1 ------------------")
-    val outListsigΕ1 = out
-      .flatMap{ eff1ListItem => eff1ListItem("sigE1") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
-
-    val sigΕ1Res = outListsigΕ1.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) }
-    println(sigΕ1Res)
-
-    val sigE1 = outListsigΕ1.map{case (k,listDb) => (listDb)}.toList
-    val sigE1Mat = DenseMatrix(sigE1.map(_.toArray): _*).t
-
-
-    println(sigE1Mat.rows)
-    println(sigE1Mat.cols)
+    val sigE1Mat = variableDM("sigE1")
+    println(mean(sigE1Mat(::,*)))
 
     println("----------------sigΕ2 ------------------")
-    val outListsigΕ2 = out
-      .flatMap{ eff1ListItem => eff1ListItem("sigE2") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
-
-    val sigΕ2Res = outListsigΕ2.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) }
-    println(sigΕ2Res)
-
-    val sigE2 = outListsigΕ2.map{case (k,listDb) => (listDb)}.toList
-    val sigE2Mat = DenseMatrix(sigE2.map(_.toArray): _*).t
-
-    println(sigE2Mat.rows)
-    println(sigE2Mat.cols)
+    val sigE2Mat = variableDM("sigE2")
+    println(mean(sigE2Mat(::,*)))
 
     println("----------------sigD ------------------")
-    val outListsigD = out
-      .flatMap{ eff1ListItem => eff1ListItem("sigD") }
-      .groupBy(_._1)
-      .map { case (k, v) => k -> v.map(_._2) }
-
-    val sigDRes = outListsigD.map { case (tuple, doubles) => (tuple, doubles.reduce(_ + _)/doubles.length) }
-    println(sigDRes)
-
-    val sigD = outListsigD.map{case (k,listDb) => (listDb)}.toList
-    val sigDMat = DenseMatrix(sigD.map(_.toArray): _*).t
-
-
-    println(sigDMat.rows)
-    println(sigDMat.cols)
+    val sigDMat = variableDM("sigD")
+    println(mean(sigDMat(::,*)))
 
     val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat, sigInterMat)
 
     val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/CompareRainier040619/withInteractions/FullResultsRainierWithInterHMC300New.csv")
     breeze.linalg.csvwrite(outputFile, results, separator = ',')
-
-  }
-
-
-  /**
-    * Takes the result of the sampling and processes and prints the results
-    */
-  def printResults(out: List[Map[String, List[List[Double]]]]) = {
-
-    def flattenSigMu(vars: String, grouped: Map[String, List[List[List[Double]]]]): List[Double] = {
-      grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.flatten.toList
-    }
-
-    def flattenEffects(vars: String, grouped: Map[String, List[List[List[Double]]]]): List[List[Double]] = {
-      grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.toList
-    }
-
-    //Separate the parameters
-    val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-    val effects1 = flattenEffects("eff1", grouped)
-    val effects2 = flattenEffects("eff2", grouped)
-    val sigE1 = flattenSigMu("sigE1", grouped)
-    val sigE2 = flattenSigMu("sigE2", grouped)
-    val sigD = flattenSigMu("sigD", grouped)
-    val sigInter = flattenSigMu("sigInter", grouped)
-    val mu = flattenSigMu("mu", grouped)
-
-    // Find the averages
-    def mean(list: List[Double]): Double =
-      if (list.isEmpty) 0 else list.sum / list.size
-
-    val sigE1A = mean(sigE1)
-    val sigE2A = mean(sigE2)
-    val sigDA = mean(sigD)
-    val sigInterA = mean(sigInter)
-    val muA = mean(mu)
-    val eff1A = effects1.transpose.map(x => x.sum / x.size.toDouble)
-    val eff2A = effects2.transpose.map(x => x.sum / x.size.toDouble)
-
-    //Interaction coefficients
-    val effectsInter = grouped.filter((t) => t._1 == "effg").map { case (k, v) => v }.flatten
-    val effsum = effectsInter.reduce((a, b) => a.zip(b).map { case (v1, v2) => v1.zip(v2).map { case (x, y) => (x + y) } }).map(z => z.map(z1 => z1 / effectsInter.size))
-
-    val interEff = effectsInter.map(l1 => l1.reduce((a, b) => a ++ b)).toList //List[List[Double]] the inner lists represent the iterations. This will have to be stored in a DenseMatrix
-
-    //Print the mean
-    println(s"sigE1: ", sigE1A)
-    println(s"sigE2: ", sigE2A)
-    println(s"sigD: ", sigDA)
-    println(s"sigInter: ", sigInterA)
-    println(s"mu: ", muA)
-    println(s"effects1: ", eff1A)
-    println(s"effects2: ", eff2A)
-    println(s"effects: ", effsum)
-
-    //Save results to csv
-    val effects1Mat = DenseMatrix(effects1.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
-    val effects2Mat = DenseMatrix(effects2.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
-    val interEffMat = DenseMatrix(interEff.map(_.toArray): _*) //make it a denseMatrix to concatenate later for the csv
-    val sigE1dv = new DenseVector[Double](sigE1.toArray)
-    val sigE2dv = new DenseVector[Double](sigE2.toArray)
-    val sigDdv = new DenseVector[Double](sigD.toArray)
-    val sigInterdv = new DenseVector[Double](sigInter.toArray)
-    val mudv = new DenseVector[Double](mu.toArray)
-    val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigInterdv, sigDdv, mudv)
-
-    val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, interEffMat, sigmasMu.t)
-    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withInteractions/FullResultsRainierWithInter170919HMC50100k.csv")
-    breeze.linalg.csvwrite(outputFile, results, separator = ',')
-
   }
 }
