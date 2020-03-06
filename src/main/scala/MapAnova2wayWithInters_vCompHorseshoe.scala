@@ -60,7 +60,7 @@ object MapAnova2wayWithInters_vCompHorseshoe {
       lx
     }
 
-    def updatePrior(mu: Real, sdE1: Real, sdE2: Real, sdG: Real, sdDR: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
+    def updatePrior(mu: Real, sdE1: Real, sdE2: Real, sdHS: Real, sdDR: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
       val myMap = scala.collection.mutable.Map[String, Map[(Int, Int), Real]]()
 
       myMap("mu") = Map((0, 0) -> mu)
@@ -69,7 +69,7 @@ object MapAnova2wayWithInters_vCompHorseshoe {
       myMap("effg") = Map[(Int, Int), Real]()
       myMap("sigE1") = Map((0, 0) -> sdE1)
       myMap("sigE2") = Map((0, 0) -> sdE2)
-      myMap("sigInter") = Map((0, 0) -> sdG)
+      myMap("sdHS") = Map((0, 0) -> sdHS)
       myMap("sigD") = Map((0, 0) -> sdDR)
 
       myMap
@@ -89,17 +89,17 @@ object MapAnova2wayWithInters_vCompHorseshoe {
       tauE2 <- tauE2RV
       sdE2 = sqrtF(Real(1.0) / tauE2)
 
-      // Sample tau, estimate sd to be used in sampling from Normal the interaction effects
-      tauGRV = Gamma(1, 10000).param
-      tauG <- tauGRV
-      sdG = sqrtF(Real(1.0) / tauG)
+      // Sample tHS for the interaction effects
+      tHSRV = halfCauchy(0,1).param
+      tHS <- tHSRV
+      sdHS = sqrtF(Real(1.0) / tHS)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
       sdDR = sqrtF(Real(1.0) / tauD)
       //scala.collection.mutable.Map("mu" -> Map((0, 0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0, 0) -> sdE1), "sigE2" -> Map((0, 0) -> sdE2), "sigInter" -> Map((0, 0) -> sdG), "sigD" -> Map((0, 0) -> sdDR))
-    } yield updatePrior(mu, sdE1, sdE2, sdG, sdDR)
+    } yield updatePrior(mu, sdE1, sdE2, sdHS, sdDR)
 
     /**
       * Helper function to update the values for the main effects of the Map
@@ -144,7 +144,10 @@ object MapAnova2wayWithInters_vCompHorseshoe {
     def addGammaEff(current: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]], i: Int, j: Int): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
       for {
         cur <- current
-        gm_inter <- Normal(0, cur("sigInter")(0, 0)).param
+        lambdajk <- halfCauchy(0,1).param
+        lambdajk2 = lambdajk.pow(2)
+        sdHS2 = cur("sdHS")(0, 0).pow(2)
+        gm_inter <- Normal(0, 1/(sdHS2*lambdajk2)).param
         //yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1"), "eff2" -> (cur("eff2") += ((0, j) -> gm_2)), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
       } yield updateMapGammaEff(cur, i, j, "effg", gm_inter)
     }
@@ -228,7 +231,6 @@ object MapAnova2wayWithInters_vCompHorseshoe {
       "effg" -> mod("effg"),
       "sigE1" -> mod("sigE1"),
       "sigE2" -> mod("sigE2"),
-      "sigInter" -> mod("sigInter"),
       "sigD" -> mod("sigD"))
 
     // Sampling
@@ -257,7 +259,7 @@ object MapAnova2wayWithInters_vCompHorseshoe {
       // This is necessary for comparing the results from Scala and R in R
       val tempData= {
         varName match {
-          case "mu" | "tau" | "sigInter" | "sigE1" | "sigE2" | "sigD" => sepVariableData
+          case "mu" | "tau" | "sigE1" | "sigE2" | "sigD" => sepVariableData
           case "eff1" | "eff2" => ListMap(sepVariableData.toSeq.sortBy(_._1._2):_*)
           case "effg" => ListMap(sepVariableData.toSeq.sortBy(_._1._2).sortBy(_._1._1):_*)
         }
@@ -281,9 +283,9 @@ object MapAnova2wayWithInters_vCompHorseshoe {
     val effgMat = variableDM("effg")
     println(mean(effgMat(::,*)))
 
-    println("----------------sigInter ------------------")
-    val sigInterMat = variableDM("sigInter")
-    println(mean(sigInterMat(::,*)))
+//    println("----------------sigInter ------------------")
+//    val sigInterMat = variableDM("sigInter")
+//    println(mean(sigInterMat(::,*)))
 
     println("----------------sigΕ1 ------------------")
     val sigE1Mat = variableDM("sigE1")
@@ -297,7 +299,7 @@ object MapAnova2wayWithInters_vCompHorseshoe {
     val sigDMat = variableDM("sigD")
     println(mean(sigDMat(::,*)))
 
-    val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat, sigInterMat)
+    val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat)
 
     val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/CompareRainier040619/withInteractions/FullResultsRainierWithInterHMC300New1m.csv")
     breeze.linalg.csvwrite(outputFile, results, separator = ',')
