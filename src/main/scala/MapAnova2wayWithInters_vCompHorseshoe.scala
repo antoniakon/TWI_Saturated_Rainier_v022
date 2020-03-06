@@ -12,6 +12,13 @@ import scala.collection.immutable.ListMap
 
 object MapAnova2wayWithInters_vCompHorseshoe {
 
+  object halfCauchy extends LocationScaleFamily {
+    def logDensity(x: Real): Real =
+      (((x * x) + 1) * Math.PI).log * -1 + log(2)
+    def generate(r: RNG): Double =
+      r.standardNormal / r.standardNormal
+  }
+
   def main(args: Array[String]): Unit = {
     val rng = ScalaRNG(3)
     val (data, n1, n2) = dataProcessing()
