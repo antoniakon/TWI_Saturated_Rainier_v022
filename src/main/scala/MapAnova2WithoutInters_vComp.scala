@@ -1,27 +1,12 @@
-import java.io.File
-
+import java.io.{BufferedWriter, File, FileWriter}
 import breeze.linalg._
-import breeze.numerics.sqrt
+import com.cibo.evilplot.numeric.Point
+import com.cibo.evilplot.plot.{LinePlot, _}
+import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
-
 import scala.annotation.tailrec
-import com.stripe.rainier.ir
-import com.cibo.evilplot.geometry.Extent
-import com.cibo.evilplot.plot.LinePlot
-import com.stripe.rainier.plot.EvilTracePlot._
-import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
-import com.cibo.evilplot.numeric.Point
-import com.cibo.evilplot._
-import com.cibo.evilplot.plot._
-import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
-import com.cibo.evilplot.numeric.Point
-import com.cibo.evilplot.plot._
-import com.cibo.evilplot.colors._
-import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
-import com.cibo.evilplot.numeric.Point
-import java.awt.Image.SCALE_SMOOTH
 
 object MapAnova2WithoutInters_vComp {
 
@@ -35,7 +20,7 @@ object MapAnova2WithoutInters_vComp {
     * Process data read from input file
     */
   def dataProcessing(): (Map[(Int,Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withoutInteractions/simulNoInter040619.csv"))
+    val data = csvread(new File("./SimulatedDataAndTrueCoefs/simulDataNoInters.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -81,7 +66,6 @@ object MapAnova2WithoutInters_vComp {
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
-      sdE2LD = tauE2RV.sample(1)
       sdE2= sqrtR(Real(1.0)/tauE2)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
@@ -175,10 +159,22 @@ object MapAnova2WithoutInters_vComp {
       "sdE2" -> mod("sdE2"),
       "sdD" -> mod("sdD"))
 
+    // Calculation of the execution time
+    def time[A](f: => A): A = {
+      val s = System.nanoTime
+      val ret = f
+      val execTime = (System.nanoTime - s) / 1e6
+      println("time: " + execTime + "ms")
+      val bw = new BufferedWriter(new FileWriter(new File("./SimulatedDataAndTrueCoefs/results/RainierResWithoutInterHMC200-1mTime.txt")))
+      bw.write(execTime.toString)
+      bw.close()
+      ret
+    }
+
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 100
-    val out = model.sample(HMC(200), 1000, 10000 * thin, thin)
+    val out = time(model.sample(HMC(200), 1000, 10000 * thin, thin))
     println("Sampling finished.")
 
     def printResults(out: List[Map[String, List[Double]]]) = {
@@ -210,13 +206,12 @@ object MapAnova2WithoutInters_vComp {
       val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigDdv, mudv)
       val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, sigmasMu.t)
 
-      val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withoutInteractions/FullResultsRainierWithoutInterHMC200New.csv")
+      val outputFile = new File("./SimulatedDataAndTrueCoefs/results/RainierResWithoutInterHMC200-1m.csv")
       breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
       val mudata = Seq.tabulate(mudv.length) { i =>
         Point(i.toDouble, mudv(i))
       }
-
 
       val plot = LinePlot(mudata).
         xAxis().yAxis().frame().

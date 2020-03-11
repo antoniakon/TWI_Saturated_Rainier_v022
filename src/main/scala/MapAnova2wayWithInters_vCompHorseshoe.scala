@@ -1,12 +1,10 @@
-import java.io.File
-
+import java.io.{BufferedWriter, File, FileWriter}
 import breeze.linalg.{*, DenseMatrix, csvread}
 import breeze.numerics.log
 import breeze.stats.mean
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core.{Normal, RandomVariable, _}
 import com.stripe.rainier.sampler._
-
 import scala.annotation.tailrec
 import scala.collection.immutable.ListMap
 
@@ -233,10 +231,21 @@ object MapAnova2wayWithInters_vCompHorseshoe {
       "sigE2" -> mod("sigE2"),
       "sigD" -> mod("sigD"))
 
+    // Calculation of the execution time
+    def time[A](f: => A): A = {
+      val s = System.nanoTime
+      val ret = f
+      val execTime = (System.nanoTime - s) / 1e6
+      println("time: " + execTime + "ms")
+      val bw = new BufferedWriter(new FileWriter(new File("./SimulatedDataAndTrueCoefs/results/FullResultsRainierWithoutInterHMC300-1mHorseshoeTime.txt")))
+      bw.write(execTime.toString)
+      bw.close()
+      ret
+    }
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 100
-    val out = model.sample(HMC(300), 1000, 10000 * thin, thin)
+    val out = time(model.sample(HMC(300), 1000, 10000 * thin, thin))
     println("Sampling finished.")
     printResults(out)
 
@@ -301,7 +310,7 @@ object MapAnova2wayWithInters_vCompHorseshoe {
 
     val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat)
 
-    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/CompareRainier040619/withInteractions/FullResultsRainierWithInterHMC300New1m.csv")
+    val outputFile = new File("./SimulatedDataAndTrueCoefs/results/FullResultsRainierWithoutInterHMC300-1mHorseshoeTime.csv")
     breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
   }

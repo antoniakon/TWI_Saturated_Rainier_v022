@@ -2,7 +2,7 @@ name := "RainierLib"
 
 version := "0.1"
 
-scalaVersion := "2.12.8"
+scalaVersion := "2.12.10"
 
 resolvers += Resolver.bintrayRepo("cibotech", "public")
 

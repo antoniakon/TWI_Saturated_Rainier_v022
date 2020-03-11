@@ -1,4 +1,4 @@
-import java.io.File
+import java.io.{BufferedWriter, File, FileWriter}
 import breeze.linalg.{*, DenseMatrix, DenseVector, csvread}
 import breeze.stats.mean
 import com.stripe.rainier.compute._
@@ -19,7 +19,7 @@ object MapAnova2wayWithInters_vComp {
     * Process data read from input file
     */
   def dataProcessing(): (Map[(Int, Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/withInteractions/simulInter040619.csv"))
+    val data = csvread(new File("./SimulatedDataAndTrueCoefs/simulDataWithInters.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -221,9 +221,21 @@ object MapAnova2wayWithInters_vComp {
       "sigInter" -> mod("sigInter"),
       "sigD" -> mod("sigD"))
 
+    // Calculation of the execution time
+    def time[A](f: => A): A = {
+      val s = System.nanoTime
+      val ret = f
+      val execTime = (System.nanoTime - s) / 1e6
+      println("time: " + execTime + "ms")
+      val bw = new BufferedWriter(new FileWriter(new File("./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1mTime.txt")))
+      bw.write(execTime.toString)
+      bw.close()
+      ret
+    }
+
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
-    val thin = 10
+    val thin = 100
     val out = model.sample(HMC(300), 1000, 10000 * thin, thin)
     println("Sampling finished.")
     printResults(out)
@@ -267,7 +279,7 @@ object MapAnova2wayWithInters_vComp {
     val effects2Mat = variableDM("eff2")
     println(mean(effects2Mat(::,*)))
 
-    println("----------------effg ------------------")
+    println("----------------effg (1,1),(2,1), (3,1) etc... ------------------")
     val effgMat = variableDM("effg")
     println(mean(effgMat(::,*)))
 
@@ -289,7 +301,8 @@ object MapAnova2wayWithInters_vComp {
 
     val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat, sigInterMat)
 
-    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/CompareRainier040619/withInteractions/FullResultsRainierWithInterHMC300New.csv")
+    val outputFile = new File("./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1m.csv")
     breeze.linalg.csvwrite(outputFile, results, separator = ',')
+
   }
 }
