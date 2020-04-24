@@ -59,7 +59,7 @@ object HorseshoeNew {
       myMap("effg") = Map[(Int, Int), Real]()
       myMap("sigE1") = Map((0, 0) -> sdE1)
       myMap("sigE2") = Map((0, 0) -> sdE2)
-      myMap("sigInter") = Map((0, 0) -> sdG)
+      myMap("sdHS") = Map((0, 0) -> sdG)
       myMap("sigD") = Map((0, 0) -> sdDR)
 
       myMap
@@ -79,17 +79,17 @@ object HorseshoeNew {
       tauE2 <- tauE2RV
       sdE2 = sqrtF(Real(1.0) / tauE2)
 
-      // Sample tau, estimate sd to be used in sampling from Normal the interaction effects
-      tauGRV = Gamma(1, 10000).param
-      tauG <- tauGRV
-      sdG = sqrtF(Real(1.0) / tauG)
+      // Sample tHS for the interaction effects
+      tHSRV = Cauchy(0,1).param
+      tHS <- tHSRV
+      sdHS = sqrtF(Real(1.0) / tHS.abs)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
       sdDR = sqrtF(Real(1.0) / tauD)
       //scala.collection.mutable.Map("mu" -> Map((0, 0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0, 0) -> sdE1), "sigE2" -> Map((0, 0) -> sdE2), "sigInter" -> Map((0, 0) -> sdG), "sigD" -> Map((0, 0) -> sdDR))
-    } yield updatePrior(mu, sdE1, sdE2, sdG, sdDR)
+    } yield updatePrior(mu, sdE1, sdE2, sdHS, sdDR)
 
     /**
       * Helper function to update the values for the main effects of the Map
@@ -134,7 +134,10 @@ object HorseshoeNew {
     def addGammaEff(current: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]], i: Int, j: Int): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
       for {
         cur <- current
-        gm_inter <- Normal(0, cur("sigInter")(0, 0)).param
+        lambdajk <- Cauchy(0,1).param
+        lambdajk2 = lambdajk.pow(2)
+        sdHS2 = cur("sdHS")(0, 0).pow(2)
+        gm_inter <- Normal(0, 1/(sdHS2*lambdajk2)).param
         //yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1"), "eff2" -> (cur("eff2") += ((0, j) -> gm_2)), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdDR"))
       } yield updateMapGammaEff(cur, i, j, "effg", gm_inter)
     }
@@ -218,7 +221,6 @@ object HorseshoeNew {
       "effg" -> mod("effg"),
       "sigE1" -> mod("sigE1"),
       "sigE2" -> mod("sigE2"),
-      "sigInter" -> mod("sigInter"),
       "sigD" -> mod("sigD"))
 
     // Calculation of the execution time
@@ -227,7 +229,7 @@ object HorseshoeNew {
       val ret = f
       val execTime = (System.nanoTime - s) / 1e6
       println("time: " + execTime + "ms")
-      val bw = new BufferedWriter(new FileWriter(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeOldHalfCauchyEx5x7100kTime.txt")))
+      val bw = new BufferedWriter(new FileWriter(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeHisCauchyAbsEx5x7100kTime.txt")))
       bw.write(execTime.toString)
       bw.close()
       ret
@@ -235,7 +237,7 @@ object HorseshoeNew {
 
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
-    val thin = 100
+    val thin = 10
     val out = model.sample(HMC(300), 1000, 10000 * thin, thin)
     println("Sampling finished.")
     printResults(out)
@@ -259,7 +261,7 @@ object HorseshoeNew {
       // This is necessary for comparing the results from Scala and R in R
       val tempData= {
         varName match {
-          case "mu" | "tau" | "sigInter" | "sigE1" | "sigE2" | "sigD" => sepVariableData
+          case "mu" | "tau" | "sigE1" | "sigE2" | "sigD" => sepVariableData
           case "eff1" | "eff2" => ListMap(sepVariableData.toSeq.sortBy(_._1._2):_*)
           case "effg" => ListMap(sepVariableData.toSeq.sortBy(_._1._2).sortBy(_._1._1):_*)
         }
@@ -283,9 +285,9 @@ object HorseshoeNew {
     val effgMat = variableDM("effg")
     println(mean(effgMat(::,*)))
 
-    println("----------------sigInter ------------------")
-    val sigInterMat = variableDM("sigInter")
-    println(mean(sigInterMat(::,*)))
+//    println("----------------sigInter ------------------")
+//    val sigInterMat = variableDM("sigInter")
+//    println(mean(sigInterMat(::,*)))
 
     println("----------------sigΕ1 ------------------")
     val sigE1Mat = variableDM("sigE1")
@@ -299,9 +301,9 @@ object HorseshoeNew {
     val sigDMat = variableDM("sigD")
     println(mean(sigDMat(::,*)))
 
-    val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat, sigInterMat)
+    val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat)
 
-    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeOldHalfCauchyEx5x7100k.csv")
+    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeHisCauchyAbsEx5x7100k.csv")
     breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
   }
