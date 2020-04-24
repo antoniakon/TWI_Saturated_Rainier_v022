@@ -19,7 +19,7 @@ object HorseshoeNew {
     * Process data read from input file
     */
   def dataProcessing(): (Map[(Int, Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("./SimulatedDataAndTrueCoefs/simulDataWithInters.csv"))
+    val data = csvread(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/simulIntersEx5x7.csv"))
     val sampleSize = data.rows
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
@@ -227,7 +227,7 @@ object HorseshoeNew {
       val ret = f
       val execTime = (System.nanoTime - s) / 1e6
       println("time: " + execTime + "ms")
-      val bw = new BufferedWriter(new FileWriter(new File("./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1mTime.txt")))
+      val bw = new BufferedWriter(new FileWriter(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeOldHalfCauchyEx5x7100kTime.txt")))
       bw.write(execTime.toString)
       bw.close()
       ret
@@ -301,7 +301,7 @@ object HorseshoeNew {
 
     val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat, sigInterMat)
 
-    val outputFile = new File("./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1m.csv")
+    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeOldHalfCauchyEx5x7100k.csv")
     breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
   }
