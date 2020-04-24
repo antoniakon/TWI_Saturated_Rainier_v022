@@ -72,22 +72,22 @@ object HorseshoeNew {
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param //RandomVariable[Real]
       tauE1 <- tauE1RV //Real
-      sdE1 = sqrtF(Real(1.0) / tauE1) //Real. Without Real() it is Double
+      sdE1 = (Real(1.0) / tauE1).pow(0.5) //Real. Without Real() it is Double
 
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
-      sdE2 = sqrtF(Real(1.0) / tauE2)
+      sdE2 = (Real(1.0) / tauE2).pow(0.5)
 
       // Sample tHS for the interaction effects
       tHSRV = Cauchy(0,1).param
       tHS <- tHSRV
-      sdHS = sqrtF(Real(1.0) / tHS.abs)
+      sdHS = (Real(1.0) / tHS.abs).pow(0.5)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
-      sdDR = sqrtF(Real(1.0) / tauD)
+      sdDR = (Real(1.0) / tauD).pow(0.5)
       //scala.collection.mutable.Map("mu" -> Map((0, 0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0, 0) -> sdE1), "sigE2" -> Map((0, 0) -> sdE2), "sigInter" -> Map((0, 0) -> sdG), "sigD" -> Map((0, 0) -> sdDR))
     } yield updatePrior(mu, sdE1, sdE2, sdHS, sdDR)
 
@@ -229,7 +229,7 @@ object HorseshoeNew {
       val ret = f
       val execTime = (System.nanoTime - s) / 1e6
       println("time: " + execTime + "ms")
-      val bw = new BufferedWriter(new FileWriter(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeHisCauchyAbsEx5x7100kTime.txt")))
+      val bw = new BufferedWriter(new FileWriter(new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeHisCauchyAbsPowEx5x7100kTime.txt")))
       bw.write(execTime.toString)
       bw.close()
       ret
@@ -303,7 +303,7 @@ object HorseshoeNew {
 
     val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat)
 
-    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeHisCauchyAbsEx5x7100k.csv")
+    val outputFile = new File("/home/antonia/ResultsFromCloud/CompareRainier/040619/Example5x7/Horseshoe/resultsHorseshoeHisCauchyAbsPowEx5x7100k.csv")
     breeze.linalg.csvwrite(outputFile, results, separator = ',')
 
   }
