@@ -10,6 +10,9 @@ import scala.annotation.tailrec
 
 object HorseshoeNew {
 
+  val REAL_ONE = Real(1.0)
+  val REAL_ZERO_POINT_FIVE = Real(0.5)
+
   /**
     * A Cauchy distribution with mode `location` and scaling relative to standard Cauchy of `scale`
     */
@@ -58,8 +61,8 @@ object HorseshoeNew {
 
     // Implementation of sqrt for Real
     def sqrtF(x: Real): Real = {
-      val lx = (Real(0.5) * x.log).exp
-      lx
+      (REAL_ZERO_POINT_FIVE * x.log).exp
+//      x.pow(REAL_ZERO_POINT_FIVE)
     }
 
     def updatePrior(mu: Real, sdE1: Real, sdE2: Real, sdG: Real, sdDR: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
@@ -84,22 +87,22 @@ object HorseshoeNew {
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param //RandomVariable[Real]
       tauE1 <- tauE1RV //Real
-      sdE1 = sqrtF(Real(1.0) / tauE1) //Real. Without Real() it is Double
+      sdE1 = sqrtF(REAL_ONE / tauE1) //Real. Without Real() it is Double
 
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 2nd variable
       tauE2RV = Gamma(1, 10000).param
       tauE2 <- tauE2RV
-      sdE2 = sqrtF(Real(1.0) / tauE2)
+      sdE2 = sqrtF(REAL_ONE / tauE2)
 
       // Sample tHS for the interaction effects
       tHSRV = myCauchy(0,1).param
       tHS <- tHSRV
-      sdHS = sqrtF(Real(1.0) / tHS.abs)
+      sdHS = sqrtF(REAL_ONE / tHS.abs)
 
       // Sample tau, estimate sd to be used in sampling from Normal for fitting the model
       tauDRV = Gamma(1, 10000).param
       tauD <- tauDRV
-      sdDR = sqrtF(Real(1.0) / tauD)
+      sdDR = sqrtF(REAL_ONE / tauD)
       //scala.collection.mutable.Map("mu" -> Map((0, 0) -> mu), "eff1" -> Map[(Int, Int), Real](), "eff2" -> Map[(Int, Int), Real](), "effg" -> Map[(Int, Int), Real](), "sigE1" -> Map((0, 0) -> sdE1), "sigE2" -> Map((0, 0) -> sdE2), "sigInter" -> Map((0, 0) -> sdG), "sigD" -> Map((0, 0) -> sdDR))
     } yield updatePrior(mu, sdE1, sdE2, sdHS, sdDR)
 
