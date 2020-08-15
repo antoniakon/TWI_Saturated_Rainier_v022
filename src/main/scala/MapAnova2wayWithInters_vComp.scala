@@ -1,26 +1,50 @@
-import java.io.{BufferedWriter, File, FileWriter}
+import java.io.{BufferedWriter, File, FileWriter, PrintWriter}
+
 import breeze.linalg.{*, DenseMatrix, DenseVector, csvread}
 import breeze.stats.mean
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core.{Normal, RandomVariable, _}
 import com.stripe.rainier.sampler._
+
 import scala.collection.immutable.ListMap
 import scala.annotation.tailrec
 
+/**
+  * Builds a 2-way Anova saturated model in Scala using Rainier version 0.2.2
+  * Main effects: a and b. Interaction effects: gamma.
+  * Model: X_ijk | mu, a_j, b_k, gamma_jk, tau  ~ N(mu + a_j + b_k + gamma_jk , τ^−1 )
+  */
 object MapAnova2wayWithInters_vComp {
 
   def main(args: Array[String]): Unit = {
     val rng = ScalaRNG(3)
-    val (data, n1, n2) = dataProcessing()
-    mainEffectsAndInters(data, rng, n1, n2)
+    val inputFilePath = "./SimulatedDataAndTrueCoefs/simulDataWithInters.csv"
+    val outputFilePath = "./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1m.csv"
+    val runtimeFilePath = "./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1mTime.txt"
+    val (data, n1, n2) = dataProcessing(inputFilePath)
+    val HMCResults = mainEffectsAndInters(data, rng, n1, n2, runtimeFilePath)
+    printAndSaveResults(HMCResults, n1, n2, outputFilePath)
+  }
+
+  /**
+    * Calculate execution time
+    */
+  def time[A](f: => A, runtimeFilePath: String): A = {
+    val s = System.nanoTime
+    val ret = f
+    val execTime = (System.nanoTime - s) / 1e6
+    println("time: " + execTime + "ms")
+    val bw = new BufferedWriter(new FileWriter(new File(runtimeFilePath)))
+    bw.write(execTime.toString)
+    bw.close()
+    ret
   }
 
   /**
     * Process data read from input file
     */
-  def dataProcessing(): (Map[(Int, Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("./SimulatedDataAndTrueCoefs/simulDataWithInters.csv"))
-    val sampleSize = data.rows
+  def dataProcessing(inputFilePath: String): (Map[(Int, Int), List[Double]], Int, Int) = {
+    val data = csvread(new File(inputFilePath))
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
     val beta = data(::, 2).map(_.toInt)
@@ -33,21 +57,22 @@ object MapAnova2wayWithInters_vComp {
       dataList = dataList :+ (alpha(i), beta(i))
     }
 
+    // Create a Map[(Int, Int), List[Double]] to represent the data. Key: (levelForFirstVariable, levelForSecondVariable), value: List of observations
     val dataMap = (dataList zip y).groupBy(_._1).map { case (k, v) => ((k._1 - 1, k._2 - 1), v.map(_._2)) }
     (dataMap, nj, nk)
   }
 
   /**
-    * Use Rainier for modelling the main effects only, without interactions
+    * Use Rainier for modelling main and interaction effects
     */
-  def mainEffectsAndInters(dataMap: Map[(Int, Int), List[Double]], rngS: ScalaRNG, n1: Int, n2: Int): Unit = {
+  def mainEffectsAndInters(dataMap: Map[(Int, Int), List[Double]], rngS: ScalaRNG, n1: Int, n2: Int, runtimeFilePath: String): scala.List[Map[String, Map[(Int, Int), Double]]] = {
     implicit val rng = rngS
-    val n = dataMap.size //No of groups
 
     // Implementation of sqrt for Real
     def sqrtF(x: Real): Real = {
-      val lx = (Real(0.5) * x.log).exp
-      lx
+      (Real(0.5) * x.log).exp
+      // OR
+      x.pow(0.5)
     }
 
     def updatePrior(mu: Real, sdE1: Real, sdE2: Real, sdG: Real, sdDR: Real): scala.collection.mutable.Map[String, Map[(Int, Int), Real]] = {
@@ -66,9 +91,10 @@ object MapAnova2wayWithInters_vComp {
     }
 
     //Define the prior
-    //For jags we had: mu~dnorm(0,0.0001) and jags uses precision, so here we use sd = sqrt(1/tau)
+    //Jags uses precision and we have: mu ~ dnorm(0, 0.0001), here we use sd = sqrt(1/tau)
     val prior = for {
       mu <- Normal(0, 100).param
+
       // Sample tau, estimate sd to be used in sampling from Normal the effects for the 1st variable
       tauE1RV = Gamma(1, 10000).param //RandomVariable[Real]
       tauE1 <- tauE1RV //Real
@@ -198,7 +224,7 @@ object MapAnova2wayWithInters_vComp {
     /**
       * Add all the main effects for each group.
       * We would like something like: val result = (0 until n1)(0 until n2).foldLeft(alphabeta)(addGroup(_,(_,_)))
-      * But we can't use foldLeft with double loop so we use an extra function either with loop or recursively
+      * But we cannot use foldLeft with double loop so we use an extra function either with loop or recursively
       */
     def fullModel(alphabeta: RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]], dataMap: Map[(Int, Int), List[Double]]): RandomVariable[scala.collection.mutable.Map[String, Map[(Int, Int), Real]]] = {
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
@@ -221,45 +247,34 @@ object MapAnova2wayWithInters_vComp {
       "sigInter" -> mod("sigInter"),
       "sigD" -> mod("sigD"))
 
-    // Calculation of the execution time
-    def time[A](f: => A): A = {
-      val s = System.nanoTime
-      val ret = f
-      val execTime = (System.nanoTime - s) / 1e6
-      println("time: " + execTime + "ms")
-      val bw = new BufferedWriter(new FileWriter(new File("./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1mTime.txt")))
-      bw.write(execTime.toString)
-      bw.close()
-      ret
-    }
-
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 100
-    val out = model.sample(HMC(300), 1000, 10000 * thin, thin)
+    val out = time(model.sample(HMC(300), 1000, 10000 * thin, thin), runtimeFilePath)
     println("Sampling finished.")
-    printResults(out)
-
+    out
   }
 
   /**
-    * Takes the result of the sampling and processes and prints the results
+    * Process the result of sampling, print and save the results
     */
-  def printResults(out: scala.List[Map[String, Map[(Int, Int), Double]]]) = {
+  def printAndSaveResults(out: scala.List[Map[String, Map[(Int, Int), Double]]], n1: Int, n2: Int, outputFilePath: String) = {
 
+    /**
+      * Select the results for a specific variable and convert them to DenseMatrix
+      */
     def variableDM(varName: String):  DenseMatrix[Double] ={
-
       // Separate the data for the specific variable of interest
       val sepVariableData = out
         .flatMap{ eff1ListItem => eff1ListItem(varName) }
         .groupBy(_._1)
         .map { case (k, v) => k -> v.map(_._2) }
 
-      // If the map contains more than one keys, they need to be sorted out to express the effects sequentially.
-      // This is necessary for comparing the results from Scala and R in R
+      // If the map contains more than one keys, they need to be sorted out to express the effects sequentially
+      // This is necessary to compare the results from Rainier, Scala and R in R
       val tempData= {
         varName match {
-          case "mu" | "tau" | "sigInter" | "sigE1" | "sigE2" | "sigD" => sepVariableData
+          case "mu" | "sigInter" | "sigE1" | "sigE2" | "sigD" => sepVariableData
           case "eff1" | "eff2" => ListMap(sepVariableData.toSeq.sortBy(_._1._2):_*)
           case "effg" => ListMap(sepVariableData.toSeq.sortBy(_._1._2).sortBy(_._1._1):_*)
         }
@@ -267,6 +282,7 @@ object MapAnova2wayWithInters_vComp {
       val tempList = tempData.map{case (k,listDb) => (listDb)}.toList
       DenseMatrix(tempList.map(_.toArray): _*).t
     }
+
     println("----------------mu ------------------")
     val muMat = variableDM("mu")
     println(mean(muMat(::,*)))
@@ -279,7 +295,7 @@ object MapAnova2wayWithInters_vComp {
     val effects2Mat = variableDM("eff2")
     println(mean(effects2Mat(::,*)))
 
-    println("----------------effg (1,1),(2,1), (3,1) etc... ------------------")
+    println("----------------effg in the order: (1,1),(1,2), (1,3),...,(2,1) etc... ------------------")
     val effgMat = variableDM("effg")
     println(mean(effgMat(::,*)))
 
@@ -301,8 +317,32 @@ object MapAnova2wayWithInters_vComp {
 
     val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, effgMat, muMat, sigDMat, sigE1Mat, sigE2Mat, sigInterMat)
 
-    val outputFile = new File("./SimulatedDataAndTrueCoefs/results/RainierResWithInterHMC300-1m.csv")
-    breeze.linalg.csvwrite(outputFile, results, separator = ',')
+    val outputFile = new File(outputFilePath)
 
+    printTitlesToFile(results, n1, n2, outputFile )
+
+    /**
+      * Save results to csv files
+      */
+    def printTitlesToFile(resMat: DenseMatrix[Double], n1: Int, n2: Int, outputFile: File): Unit = {
+      val pw = new PrintWriter(outputFile)
+
+      val gammaTitles = (1 to n1)
+        .map { i => "-".concat(i.toString) }
+        .map { entry =>
+          (1 to n2).map { j => "gamma".concat(j.toString).concat(entry) }.mkString(",")
+        }.mkString(",")
+
+      pw.append( (1 to n1).map { i => "alpha".concat(i.toString) }.mkString(",") )
+        .append(",")
+        .append( (1 to n2).map { i => "beta".concat(i.toString) }.mkString(",") )
+        .append(",")
+        .append(gammaTitles)
+        .append("mu ,sigD, sigE1, sigE2, sigHS")
+        .append("\n")
+
+      breeze.linalg.csvwrite(outputFile, resMat, separator = ',')
+      pw.close()
+    }
   }
 }
