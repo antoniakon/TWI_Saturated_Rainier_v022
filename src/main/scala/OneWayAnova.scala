@@ -2,6 +2,9 @@ import com.stripe.rainier.compute._
 import com.stripe.rainier.core.{Normal, RandomVariable, _}
 import com.stripe.rainier.sampler._
 
+/**
+  * Builds a simple 1-way Anova model in Scala using Rainier version 0.2.2
+  */
 object OneWayAnova {
 
   def anova: Unit = {
