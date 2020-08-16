@@ -1,27 +1,46 @@
 import java.io.{BufferedWriter, File, FileWriter}
 import breeze.linalg._
-import com.cibo.evilplot.numeric.Point
-import com.cibo.evilplot.plot.{LinePlot, _}
-import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
+
 import com.stripe.rainier.compute._
 import com.stripe.rainier.core._
 import com.stripe.rainier.sampler._
 import scala.annotation.tailrec
 
+/**
+  * Builds a 2-way Anova saturated model that has only main effects in Scala using Rainier version 0.2.2
+  * Main effects: a and b.
+  * Model: X_ijk | mu, a_j, b_k, tau  ~ N(mu + a_j + b_k, τ^−1 )
+  */
 object MapAnova2WithoutInters_vComp {
 
   def main(args: Array[String]): Unit = {
     val rng = ScalaRNG(3)
-    val (data, n1, n2) = dataProcessing()
-    mainEffects(data, rng, n1, n2)
+    val inputFilePath = "./SimulatedDataAndTrueCoefs/simulDataWithoutInters.csv"
+    val runtimeFilePath = "./SimulatedDataAndTrueCoefs/results/RainierResWithoutHMC300-1mTime.txt"
+    val (data, n1, n2) = dataProcessing(inputFilePath)
+    val HMCResultsMainEffs = mainEffects(data, rng, n1, n2, runtimeFilePath)
+    printResults(HMCResultsMainEffs)
+  }
+
+  /**
+    * Calculate execution time
+    */
+  def time[A](f: => A, runtimeFilePath: String): A = {
+    val s = System.nanoTime
+    val ret = f
+    val execTime = (System.nanoTime - s) / 1e6
+    println("time: " + execTime + "ms")
+    val bw = new BufferedWriter(new FileWriter(new File(runtimeFilePath)))
+    bw.write(execTime.toString)
+    bw.close()
+    ret
   }
 
   /**
     * Process data read from input file
     */
-  def dataProcessing(): (Map[(Int,Int), List[Double]], Int, Int) = {
-    val data = csvread(new File("./SimulatedDataAndTrueCoefs/simulDataNoInters.csv"))
-    val sampleSize = data.rows
+  def dataProcessing(inputFilePath: String): (Map[(Int,Int), List[Double]], Int, Int) = {
+    val data = csvread(new File(inputFilePath))
     val y = data(::, 0).toArray
     val alpha = data(::, 1).map(_.toInt)
     val beta = data(::, 2).map(_.toInt)
@@ -33,27 +52,22 @@ object MapAnova2WithoutInters_vComp {
     for (i <- 0 until l){
       dataList = dataList :+ (alpha(i),beta(i))
     }
-    //println(dataList)
 
     val dataMap = (dataList zip y).groupBy(_._1).map{ case (k,v) => ((k._1-1,k._2-1) ,v.map(_._2))} //Bring the data to the map format
-    //println(dataMap)
     (dataMap, nj, nk)
-
   }
 
   /**
-    * Use Rainier for modelling the main effects only, without interactions
+    * Use Rainier for modelling the main effects only of a two-way Anova, without interactions
     */
-  def mainEffects(dataMap: Map[(Int, Int), List[Double]], rngS: ScalaRNG, n1: Int, n2: Int): Unit = {
+  def mainEffects(dataMap: Map[(Int, Int), List[Double]], rngS: ScalaRNG, n1: Int, n2: Int, runtimeFilePath: String): List[Map[String, List[Double]]] = {
+    implicit val rng = rngS
 
     // Implementation of sqrt for Real
     def sqrtR(x: Real): Real = {
-      val lx = (Real(0.5) * x.log).exp
-      lx
+      (Real(0.5) * x.log).exp
     }
 
-    implicit val rng = rngS
-    val n = dataMap.size //No of groups
     // All prior values for the unknown parameters, defined as follows, are stored in lists, to be able to process and print the results at the end.
     val prior = for {
       mu <- Normal(0, 100).param
@@ -94,6 +108,7 @@ object MapAnova2WithoutInters_vComp {
         gm_2 <- Normal(0, cur("sdE2")(0)).param
       } yield Map("mu" -> cur("mu"), "eff1" -> cur("eff1") , "eff2" -> (gm_2::cur("eff2")), "sdE1" -> cur("sdE1"), "sdE2" -> cur("sdE2"), "sdD" -> cur("sdD"))
     }
+
     /**
       * Fit to the data per group
       */
@@ -144,10 +159,9 @@ object MapAnova2WithoutInters_vComp {
       //addAllEffLoop(alphabeta, dataMap)
       addAllEffRecursive(alphabeta, dataMap, 0, 0)
     }
+
     val alpha = (0 until n1).foldLeft(prior)(addAplha(_, _))
-
     val alphabeta = (0 until n2).foldLeft(alpha)(addBeta(_, _))
-
     val fullModelRes = fullModel(alphabeta, dataMap)
 
     val model = for {
@@ -159,86 +173,65 @@ object MapAnova2WithoutInters_vComp {
       "sdE2" -> mod("sdE2"),
       "sdD" -> mod("sdD"))
 
-    // Calculation of the execution time
-    def time[A](f: => A): A = {
-      val s = System.nanoTime
-      val ret = f
-      val execTime = (System.nanoTime - s) / 1e6
-      println("time: " + execTime + "ms")
-      val bw = new BufferedWriter(new FileWriter(new File("./SimulatedDataAndTrueCoefs/results/RainierResWithoutInterHMC200-1mTime.txt")))
-      bw.write(execTime.toString)
-      bw.close()
-      ret
-    }
-
     // Sampling
     println("Model built. Sampling now (will take a long time)...")
     val thin = 100
-    val out = time(model.sample(HMC(200), 1000, 10000 * thin, thin))
+    val out = time(model.sample(HMC(200), 1000, 10000 * thin, thin), runtimeFilePath)
     println("Sampling finished.")
 
-    def printResults(out: List[Map[String, List[Double]]]) = {
-
-      def flattenSigMu(vars: String, grouped: Map[String, List[List[Double]]]):  List[Double] ={
-        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.toList
-      }
-
-      def flattenEffects(vars: String, grouped: Map[String, List[List[Double]]]):  List[List[Double]] ={
-        grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.toList
-      }
-
-      //Separate the parameters
-      val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
-      val effects1 = flattenEffects("eff1", grouped)
-      val effects2 = flattenEffects("eff2", grouped)
-      val sigE1 = flattenSigMu("sdE1", grouped)
-      val sigE2 = flattenSigMu("sdE2", grouped)
-      val sigD = flattenSigMu("sdD", grouped)
-      val mu = flattenSigMu("mu", grouped)
-
-      //Save results to csv
-      val effects1Mat = DenseMatrix(effects1.map(_.toArray):_*) //make it a denseMatrix to concatenate later
-      val effects2Mat = DenseMatrix(effects2.map(_.toArray):_*) //make it a denseMatrix to concatenate later
-      val sigE1dv = new DenseVector[Double](sigE1.toArray)
-      val sigE2dv = new DenseVector[Double](sigE2.toArray)
-      val sigDdv = new DenseVector[Double](sigD.toArray)
-      val mudv = new DenseVector[Double](mu.toArray)
-      val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigDdv, mudv)
-      val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, sigmasMu.t)
-
-      val outputFile = new File("./SimulatedDataAndTrueCoefs/results/RainierResWithoutInterHMC200-1m.csv")
-      breeze.linalg.csvwrite(outputFile, results, separator = ',')
-
-      val mudata = Seq.tabulate(mudv.length) { i =>
-        Point(i.toDouble, mudv(i))
-      }
-
-      val plot = LinePlot(mudata).
-        xAxis().yAxis().frame().
-        xLabel("x").yLabel("y").render()
-
-
-      // Find the averages
-      def mean(list: List[Double]): Double =
-        if (list.isEmpty) 0 else list.sum / list.size
-
-      val sigE1A = mean(sigE1)
-      val sigE2A = mean(sigE2)
-      val sigDA = mean(sigD)
-      val muA = mean(mu)
-      val eff1A = effects1.transpose.map(x => x.sum / x.size.toDouble)
-      val eff2A = effects2.transpose.map(x => x.sum / x.size.toDouble)
-
-      //Print the average
-      println(s"tauE1: ", sigE1A)
-      println(s"tauE2: ", sigE2A)
-      println(s"sdD: ", sigDA)
-      println(s"mu: ", muA)
-      println(s"effects1: ", eff1A)
-      println(s"effects2: ", eff2A)
-    }
     val outList = out.map{ v=> v.map { case (k,v) => (k, v.toList)}}
-    printResults(outList)
+    outList
   }
 
+  /**
+    * Process the result of sampling and print the results
+    */
+  def printResults(out: List[Map[String, List[Double]]]) = {
+
+    def flattenSigMu(vars: String, grouped: Map[String, List[List[Double]]]):  List[Double] ={
+      grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.flatten.toList
+    }
+
+    def flattenEffects(vars: String, grouped: Map[String, List[List[Double]]]):  List[List[Double]] ={
+      grouped.filter((t) => t._1 == vars).map { case (k, v) => v }.flatten.toList
+    }
+
+    //Separate the parameters
+    val grouped = out.flatten.groupBy(_._1).mapValues(_.map(_._2))
+    val effects1 = flattenEffects("eff1", grouped)
+    val effects2 = flattenEffects("eff2", grouped)
+    val sigE1 = flattenSigMu("sdE1", grouped)
+    val sigE2 = flattenSigMu("sdE2", grouped)
+    val sigD = flattenSigMu("sdD", grouped)
+    val mu = flattenSigMu("mu", grouped)
+
+    //Save results to csv
+    val effects1Mat = DenseMatrix(effects1.map(_.toArray):_*) //make it a denseMatrix to concatenate later
+    val effects2Mat = DenseMatrix(effects2.map(_.toArray):_*) //make it a denseMatrix to concatenate later
+    val sigE1dv = new DenseVector[Double](sigE1.toArray)
+    val sigE2dv = new DenseVector[Double](sigE2.toArray)
+    val sigDdv = new DenseVector[Double](sigD.toArray)
+    val mudv = new DenseVector[Double](mu.toArray)
+    val sigmasMu = DenseMatrix(sigE1dv, sigE2dv, sigDdv, mudv)
+    val results = DenseMatrix.horzcat(effects1Mat, effects2Mat, sigmasMu.t)
+
+    // Find the mean values
+    def mean(list: List[Double]): Double =
+      if (list.isEmpty) 0 else list.sum / list.size
+
+    val sigE1A = mean(sigE1)
+    val sigE2A = mean(sigE2)
+    val sigDA = mean(sigD)
+    val muA = mean(mu)
+    val eff1A = effects1.transpose.map(x => x.sum / x.size.toDouble)
+    val eff2A = effects2.transpose.map(x => x.sum / x.size.toDouble)
+
+    //Print the mean values
+    println(s"tauE1: ", sigE1A)
+    println(s"tauE2: ", sigE2A)
+    println(s"sdD: ", sigDA)
+    println(s"mu: ", muA)
+    println(s"effects1: ", eff1A)
+    println(s"effects2: ", eff2A)
+  }
 }
